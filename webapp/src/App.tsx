@@ -8,9 +8,11 @@ import Assets from "./pages/Assets.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import IndividualLogin from "./pages/IndividualLogin.tsx";
 import IndividualRegister from "./pages/IndividualRegister.tsx";
+import Profile from "./pages/Profile.tsx";
 import Reports from "./pages/Reports.tsx";
+import Settings from "./pages/Settings.tsx";
 import Users from "./pages/Users.tsx";
-import { getTheme } from "./styles/theme.ts";
+import { getTheme } from "./styles/theme";
 
 const getPageTitle = (pathname: string) => {
   const titleMap: Record<string, string> = {
@@ -20,6 +22,8 @@ const getPageTitle = (pathname: string) => {
     "/assets": "Assets",
     "/reports": "Reports",
     "/users": "Users",
+    "/profile": "Profile",
+    "/settings": "Settings",
   };
 
   return `AssetLife - ${titleMap[pathname] ?? "Dashboard"}`;
@@ -64,6 +68,8 @@ const App = () => {
             <Route path="/assets" element={<Assets />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

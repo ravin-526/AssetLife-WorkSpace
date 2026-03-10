@@ -1,3 +1,1 @@
-import LogoImg from "../assets/images/logo.png";
-
-export const LOGO = LogoImg;
+export const LOGO = "/images/logo.png";

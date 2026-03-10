@@ -30,7 +30,7 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 
-import { COLORS, HEADER_HEIGHT, SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH } from "../styles/theme.ts";
+import theme, { COLORS, HEADER_HEIGHT, SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH, SPACING, getTheme } from "../styles/theme";
 import { LOGO } from "../constants/logo.ts";
 import useUserStore from "../store/userStore.ts";
 
@@ -74,7 +74,8 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
   }, [isSmallScreen]);
 
   const drawerWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
-  const borderColor = muiTheme.palette.divider;
+  const sidebarBorderColor = COLORS.SIDEBAR_BORDER;
+  const headerBorderColor = COLORS.HEADER_BORDER;
 
   const transitionStyle = useMemo(
     () =>
@@ -84,6 +85,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
       }),
     [muiTheme]
   );
+  const layoutTheme = useMemo(() => getTheme(mode), [mode]);
 
   const userDisplayName = user?.name || "User";
 
@@ -97,7 +99,11 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
 
   const handleProfile = () => {
     handleUserMenuClose();
-    navigate("/users");
+    navigate("/profile");
+  };
+
+  const handleSettings = () => {
+    navigate("/settings");
   };
 
   const handleLogout = () => {
@@ -118,23 +124,23 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
             width: drawerWidth,
             boxSizing: "border-box",
             bgcolor: "background.paper",
-            borderRight: `1px solid ${borderColor}`,
+            borderRight: `1px solid ${sidebarBorderColor}`,
             overflowX: "hidden",
             transition: transitionStyle,
-            pt: 2,
+            pt: `${SPACING(2)}px`,
           },
         }}
       >
         <Box
           sx={{
             minHeight: HEADER_HEIGHT,
-            px: 1.5,
-            py: 1,
-            borderBottom: `1px solid ${borderColor}`,
+            px: `${SPACING(1.5)}px`,
+            py: `${SPACING(1)}px`,
+            borderBottom: `1px solid ${headerBorderColor}`,
             display: "flex",
             alignItems: "center",
             justifyContent: collapsed ? "center" : "flex-start",
-            gap: 1,
+            gap: `${SPACING(1)}px`,
           }}
         >
           <Box
@@ -152,7 +158,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
             <Typography
               variant="h2"
               sx={{
-                fontSize: muiTheme.typography.h2.fontSize,
+                fontSize: theme.sidebar.brandNameSize,
                 lineHeight: 1,
                 color: "text.primary",
               }}
@@ -174,15 +180,15 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
                 selected={selected}
                 onClick={() => setActivePath(item.path)}
                 sx={{
-                  mb: 1,
+                  mb: `${SPACING(0.5)}px`,
                   borderRadius: 2,
-                  minHeight: 36,
-                  py: 0.25,
+                  minHeight: 32,
+                  py: `${SPACING(0.5)}px`,
                   justifyContent: collapsed ? "center" : "flex-start",
-                  bgcolor: selected ? muiTheme.palette.primary.main : "transparent",
-                  color: selected ? muiTheme.palette.primary.contrastText : "text.secondary",
+                  bgcolor: selected ? COLORS.SIDEBAR_ACTIVE : "transparent",
+                  color: selected ? layoutTheme.palette.primary.contrastText : "text.secondary",
                   "&:hover": {
-                    bgcolor: selected ? muiTheme.palette.primary.main : "action.hover",
+                    bgcolor: selected ? COLORS.SIDEBAR_ACTIVE : "action.hover",
                   },
                 }}
               >
@@ -191,7 +197,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
                     sx={{
                       minWidth: collapsed ? 0 : 36,
                       mr: collapsed ? 0 : 1,
-                      color: selected ? muiTheme.palette.primary.contrastText : "text.secondary",
+                      color: selected ? layoutTheme.palette.primary.contrastText : "text.secondary",
                     }}
                   >
                     {item.icon}
@@ -203,7 +209,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
                     primary={item.label}
                     primaryTypographyProps={{
                       variant: "h6",
-                      sx: { lineHeight: 0.5 },
+                      sx: { lineHeight: theme.sidebar.menuLineHeight },
                     }}
                   />
                 ) : null}
@@ -223,7 +229,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
             height: HEADER_HEIGHT,
             bgcolor: mode === "light" ? COLORS.LIGHT_HEADER : COLORS.DARK_HEADER,
             color: "text.primary",
-            borderBottom: `1px solid ${borderColor}`,
+            borderBottom: `1px solid ${headerBorderColor}`,
             transition: transitionStyle,
           }}
         >
@@ -250,12 +256,12 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
                 alignItems: "center",
                 gap: 1,
                 bgcolor: "background.paper",
-                border: `1px solid ${borderColor}`,
+                border: `1px solid ${headerBorderColor}`,
                 px: 1.5,
                 py: 0.5,
                 borderRadius: 2,
                 minWidth: { xs: 150, sm: 220 },
-                maxWidth: { xs: "100%", md: 280 },
+                maxWidth: { xs: "100%", md: theme.header.searchBoxWidth },
                 flex: { xs: "1 1 220px", md: "0 0 auto" },
               }}
             >
@@ -270,12 +276,12 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: { xs: "space-between", md: "flex-end" },
-                gap: 1,
+                gap: theme.header.iconSpacing,
                 flexWrap: { xs: "wrap", md: "nowrap" },
               }}
             >
 
-              <IconButton onClick={() => console.log("Settings clicked")}>
+              <IconButton onClick={handleSettings} aria-label="Open settings">
                 <SettingsIcon />
               </IconButton>
 

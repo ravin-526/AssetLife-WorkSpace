@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import random
+import re
 from typing import Any
 
 from bson import ObjectId
@@ -9,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
-from app.core.crypto import encrypt_value, hash_value
+from app.core.crypto import decrypt_value, encrypt_value, hash_value
 from app.core.exceptions import AuthenticationError, ConflictError, NotFoundError
 from app.core.jwt import create_access_token
 from app.core.logger import app_logger
@@ -25,7 +26,7 @@ _OTP_TTL_SECONDS = 30
 class IndividualRegisterRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     mobile: str = Field(min_length=10, max_length=15)
-    email: str = Field(min_length=5, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
     dob: str = Field(min_length=4, max_length=20)
     pan: str = Field(min_length=4, max_length=20)
 
@@ -39,8 +40,14 @@ class IndividualRegisterRequest(BaseModel):
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, value: str) -> str:
+    def validate_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
         email = value.strip().lower()
+        if not email:
+            return None
+
         if "@" not in email or "." not in email.split("@")[-1]:
             raise ValueError("Invalid email address")
         return email
@@ -85,7 +92,7 @@ async def register_individual(payload: IndividualRegisterRequest, db=Depends(get
     document = {
         "encrypted_name": encrypt_value(payload.name),
         "encrypted_mobile": encrypt_value(payload.mobile),
-        "encrypted_email": encrypt_value(payload.email),
+        "encrypted_email": encrypt_value(payload.email) if payload.email else None,
         "encrypted_dob": encrypt_value(payload.dob),
         "encrypted_pan": encrypt_value(payload.pan),
         "mobile_hash": mobile_hash,
@@ -107,10 +114,13 @@ async def register_individual(payload: IndividualRegisterRequest, db=Depends(get
     if settings.DEBUG:
         print(f"Generated OTP for {payload.mobile}: {otp}")
 
-    return {
+    response_payload: dict[str, str] = {
         "message": "OTP sent. Please verify to complete registration.",
         "user_id": user_id,
     }
+    if settings.DEBUG:
+        response_payload["debug_otp"] = otp
+    return response_payload
 
 
 @router.post("/send-otp")
@@ -132,7 +142,10 @@ async def send_otp(payload: SendOtpRequest, db=Depends(get_db)) -> dict[str, str
         print(f"Generated OTP for {payload.mobile}: {otp}")
 
     app_logger.info("OTP generated for individual login", extra={"user_id": str(user["_id"])})
-    return {"message": "OTP sent successfully"}
+    response_payload: dict[str, str] = {"message": "OTP sent successfully"}
+    if settings.DEBUG:
+        response_payload["debug_otp"] = otp
+    return response_payload
 
 
 @router.post("/verify-otp")
@@ -190,12 +203,28 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
 @router.get("/profile")
 async def get_individual_profile(
     current_user: dict[str, str] = Depends(get_current_user),
-) -> dict[str, str]:
+    db=Depends(get_db),
+) -> dict[str, str | None]:
+    if not current_user.get("id"):
+        raise HTTPException(status_code=401, detail="Missing authentication token")
+
+    collection = db["individual_users"]
+    try:
+        object_id = ObjectId(current_user["id"])
+    except InvalidId as error:
+        raise HTTPException(status_code=400, detail="Invalid user id") from error
+
+    user = await collection.find_one({"_id": object_id})
+    if not user:
+        raise NotFoundError("Individual user not found")
+
     return {
-        "message": "Profile fetched successfully",
-        "user_id": current_user["id"],
+        "id": current_user["id"],
+        "name": decrypt_value(user.get("encrypted_name", "")) if user.get("encrypted_name") else "",
+        "email": decrypt_value(user.get("encrypted_email", "")) if user.get("encrypted_email") else "",
+        "phone": decrypt_value(user.get("encrypted_mobile", "")) if user.get("encrypted_mobile") else "",
+        "organization": None,
         "role": current_user["role"],
-        "username": current_user.get("username", ""),
     }
 
 
@@ -205,7 +234,7 @@ async def update_individual_user(
     update_data: dict[str, Any] = Body(..., description="Fields to update"),
     _current_user: dict[str, str] = Depends(get_current_user),
     db=Depends(get_db),
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     try:
         object_id = ObjectId(user_id)
     except InvalidId as error:
@@ -220,11 +249,39 @@ async def update_individual_user(
 
         payload = update_data.copy()
         payload.pop("_id", None)
-        payload["updated_at"] = datetime.now(timezone.utc)
 
-        await collection.update_one({"_id": object_id}, {"$set": payload})
+        allowed_fields = {"name", "email"}
+        unknown_fields = set(payload.keys()) - allowed_fields
+        if unknown_fields:
+            raise HTTPException(status_code=400, detail=f"Unsupported fields: {', '.join(sorted(unknown_fields))}")
 
-        return {"message": "User updated successfully"}
+        update_payload: dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
+
+        if "name" in payload:
+            name = str(payload["name"]).strip()
+            if len(name) < 2 or len(name) > 120:
+                raise HTTPException(status_code=400, detail="Name must be between 2 and 120 characters")
+            update_payload["encrypted_name"] = encrypt_value(name)
+
+        if "email" in payload:
+            email = str(payload["email"]).strip().lower()
+            if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+                raise HTTPException(status_code=400, detail="Please enter a valid email")
+            update_payload["encrypted_email"] = encrypt_value(email)
+
+        await collection.update_one({"_id": object_id}, {"$set": update_payload})
+        updated_user = await collection.find_one({"_id": object_id})
+        if not updated_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return {
+            "id": user_id,
+            "name": decrypt_value(updated_user.get("encrypted_name", "")) if updated_user.get("encrypted_name") else "",
+            "email": decrypt_value(updated_user.get("encrypted_email", "")) if updated_user.get("encrypted_email") else "",
+            "phone": decrypt_value(updated_user.get("encrypted_mobile", "")) if updated_user.get("encrypted_mobile") else "",
+            "organization": None,
+            "role": _current_user["role"],
+        }
     except HTTPException:
         raise
     except Exception as error:
