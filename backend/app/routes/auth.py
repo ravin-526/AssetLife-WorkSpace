@@ -114,7 +114,7 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
         raise HTTPException(status_code=400, detail="OTP expired. Please request a new OTP.")
 
     if otp_record.get("otp") != payload.otp:
-        raise AuthenticationError("Invalid OTP")
+        raise HTTPException(status_code=400, detail="Incorrect OTP")
 
     user = await collection.find_one({"mobile_hash": mobile_hash})
     if not user:

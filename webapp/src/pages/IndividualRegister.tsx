@@ -24,10 +24,6 @@ type RegisterResponse = {
   user_id?: string;
 };
 
-type RequestOtpResponse = {
-  message?: string;
-};
-
 type VerifyOtpResponse = {
   access_token?: string;
   token?: string;
@@ -55,7 +51,6 @@ const IndividualRegister = () => {
   const [error, setError] = useState<string>("");
 
   const [registering, setRegistering] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [isOtpButtonDisabled, setIsOtpButtonDisabled] = useState(false);
@@ -146,54 +141,30 @@ const IndividualRegister = () => {
 
     try {
       setRegistering(true);
-      const response = await api.post<RegisterResponse>("/individual/register", {
-        name: name.trim(),
-        email,
-        mobile,
-        dob: "1970-01-01",
-        pan: "AAAAA0000A",
-      });
+      if (!registered) {
+        await api.post<RegisterResponse>("/individual/register", {
+          name: name.trim(),
+          email,
+          mobile,
+          dob: "1970-01-01",
+          pan: "AAAAA0000A",
+        });
+      } else {
+        await api.post<{ message?: string }>("/individual/send-otp", {
+          mobile,
+        });
+      }
 
       setRegistered(true);
-      setMessage(response.data.message ?? "Registration successful. You can now send OTP.");
+      setOtpSent(true);
+      setOtp("");
+      setOtpCooldown(30);
+      setIsOtpButtonDisabled(true);
+      setMessage("OTP sent. Please verify to complete registration.");
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Registration failed");
     } finally {
       setRegistering(false);
-    }
-  };
-
-  const handleSendOtp = async () => {
-    setError("");
-    setMessage("");
-
-    const { mobile } = parseContact();
-
-    if (!mobile) {
-      setError("Please enter a valid phone number to receive OTP.");
-      return;
-    }
-
-    if (!registered) {
-      setError("Please complete registration before requesting OTP.");
-      return;
-    }
-
-    try {
-      setSendingOtp(true);
-      const response = await api.post<RequestOtpResponse>("/individual/send-otp", {
-        mobile,
-      });
-
-      setOtpSent(true);
-      setOtp("");
-      setMessage(response.data.message ?? "OTP sent successfully");
-      setOtpCooldown(30);
-      setIsOtpButtonDisabled(true);
-    } catch (requestError: unknown) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to send OTP");
-    } finally {
-      setSendingOtp(false);
     }
   };
 
@@ -226,14 +197,21 @@ const IndividualRegister = () => {
       }
 
       login(token, response.data.user ?? { name: name.trim(), phone: mobile, email });
-      setMessage(response.data.message ?? "OTP verified successfully. Redirecting...");
+      setMessage("Registration successful.");
 
       setTimeout(() => {
         navigate("/dashboard", { replace: true });
       }, 600);
     } catch (requestError: unknown) {
       const backendMessage = requestError instanceof Error ? requestError.message : "OTP verification failed";
-      setError(backendMessage.toLowerCase().includes("invalid otp") ? "Invalid OTP. Please try again." : backendMessage);
+      const normalized = backendMessage.toLowerCase();
+      if (normalized.includes("expired")) {
+        setError("OTP expired. Please request a new OTP.");
+      } else if (normalized.includes("invalid otp") || normalized.includes("incorrect otp")) {
+        setError("Incorrect OTP");
+      } else {
+        setError(backendMessage);
+      }
       setOtpSent(true);
     } finally {
       setVerifyingOtp(false);
@@ -337,23 +315,21 @@ const IndividualRegister = () => {
               <Button
                 variant="contained"
                 onClick={handleRegister}
-                disabled={registering || sendingOtp || verifyingOtp}
+                disabled={isOtpButtonDisabled || registering || verifyingOtp}
                 fullWidth
               >
-                {registering ? "Registering..." : "Register"}
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleSendOtp}
-                disabled={!registered || isOtpButtonDisabled || registering || sendingOtp || verifyingOtp}
-                fullWidth
-              >
-                {sendingOtp ? "Sending OTP..." : otpCooldown > 0 ? `Resend OTP (${otpCooldown}s)` : "Send OTP"}
+                {registering
+                  ? "Sending OTP..."
+                  : otpCooldown > 0
+                    ? `Resend OTP (${otpCooldown}s)`
+                    : registered
+                      ? "Resend OTP"
+                      : "Register"}
               </Button>
               <Button
                 variant="contained"
                 onClick={handleVerifyOtp}
-                disabled={!otpSent || registering || sendingOtp || verifyingOtp}
+                disabled={!otpSent || registering || verifyingOtp}
                 fullWidth
               >
                 {verifyingOtp ? "Verifying..." : "Verify OTP"}
