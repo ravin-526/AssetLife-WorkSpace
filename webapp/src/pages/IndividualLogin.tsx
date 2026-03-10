@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Alert,
@@ -52,6 +52,29 @@ const IndividualLogin = () => {
   const [error, setError] = useState<string>("");
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [isOtpButtonDisabled, setIsOtpButtonDisabled] = useState(false);
+
+  useEffect(() => {
+    if (otpCooldown <= 0) {
+      setIsOtpButtonDisabled(false);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setOtpCooldown((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(intervalId);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [otpCooldown]);
 
   const validateIdentifier = () => {
     if (!identifier.trim()) {
@@ -105,6 +128,8 @@ const IndividualLogin = () => {
       setOtpSent(true);
       setOtp("");
       setMessage(response.data.message ?? "OTP sent successfully");
+      setOtpCooldown(30);
+      setIsOtpButtonDisabled(true);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Failed to send OTP");
     } finally {
@@ -231,10 +256,10 @@ const IndividualLogin = () => {
               <Button
                 variant="contained"
                 onClick={handleSendOtp}
-                disabled={sendingOtp || verifyingOtp}
+                disabled={isOtpButtonDisabled || sendingOtp || verifyingOtp}
                 fullWidth
               >
-                {sendingOtp ? "Sending OTP..." : "Send OTP"}
+                {sendingOtp ? "Sending OTP..." : otpCooldown > 0 ? `Resend OTP (${otpCooldown}s)` : "Send OTP"}
               </Button>
               <Button
                 variant="contained"
