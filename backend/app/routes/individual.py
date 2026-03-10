@@ -19,7 +19,7 @@ from app.db.mongo import get_db
 router = APIRouter(prefix="/individual", tags=["Individual"])
 
 _otp_store: dict[str, dict[str, datetime | str]] = {}
-_OTP_TTL_MINUTES = 5
+_OTP_TTL_SECONDS = 30
 
 
 class IndividualRegisterRequest(BaseModel):
@@ -116,7 +116,7 @@ async def send_otp(payload: SendOtpRequest, db=Depends(get_db)) -> dict[str, str
     otp = str(random.randint(100000, 999999))
     _otp_store[mobile_hash] = {
         "otp": otp,
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=_OTP_TTL_MINUTES),
+        "created_at": datetime.utcnow(),
     }
 
     if settings.DEBUG:
@@ -135,10 +135,14 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
     if not otp_record:
         raise AuthenticationError("OTP not found. Please request a new OTP")
 
-    expires_at = otp_record["expires_at"]
-    if not isinstance(expires_at, datetime) or expires_at < datetime.now(timezone.utc):
+    created_at = otp_record.get("created_at")
+    if not isinstance(created_at, datetime):
         _otp_store.pop(mobile_hash, None)
-        raise AuthenticationError("OTP expired. Please request a new OTP")
+        raise HTTPException(status_code=400, detail="OTP expired. Please request a new OTP.")
+
+    if datetime.utcnow() - created_at > timedelta(seconds=_OTP_TTL_SECONDS):
+        _otp_store.pop(mobile_hash, None)
+        raise HTTPException(status_code=400, detail="OTP expired. Please request a new OTP.")
 
     if otp_record.get("otp") != payload.otp:
         return JSONResponse(

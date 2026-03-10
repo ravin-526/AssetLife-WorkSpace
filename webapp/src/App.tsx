@@ -1,6 +1,6 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { CssBaseline, ThemeProvider } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import AdminLayout from "./components/AdminLayout.tsx";
 import PrivateRoute from "./components/PrivateRoute.tsx";
@@ -11,6 +11,29 @@ import IndividualRegister from "./pages/IndividualRegister.tsx";
 import Reports from "./pages/Reports.tsx";
 import Users from "./pages/Users.tsx";
 import { getTheme } from "./styles/theme.ts";
+
+const getPageTitle = (pathname: string) => {
+  const titleMap: Record<string, string> = {
+    "/login": "Login",
+    "/register": "Register",
+    "/dashboard": "Dashboard",
+    "/assets": "Assets",
+    "/reports": "Reports",
+    "/users": "Users",
+  };
+
+  return `AssetLife - ${titleMap[pathname] ?? "Dashboard"}`;
+};
+
+const DocumentTitleManager = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    document.title = getPageTitle(location.pathname);
+  }, [location.pathname]);
+
+  return null;
+};
 
 const App = () => {
   const [mode, setMode] = useState<"light" | "dark">("light");
@@ -24,6 +47,7 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
+        <DocumentTitleManager />
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/register" element={<IndividualRegister />} />
