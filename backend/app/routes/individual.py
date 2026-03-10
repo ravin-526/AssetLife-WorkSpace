@@ -98,8 +98,17 @@ async def register_individual(payload: IndividualRegisterRequest, db=Depends(get
     user_id = str(result.inserted_id)
     app_logger.info("Individual user registered", extra={"user_id": user_id})
 
+    otp = str(random.randint(100000, 999999))
+    _otp_store[mobile_hash] = {
+        "otp": otp,
+        "created_at": datetime.utcnow(),
+    }
+
+    if settings.DEBUG:
+        print(f"Generated OTP for {payload.mobile}: {otp}")
+
     return {
-        "message": "Individual user registered successfully",
+        "message": "OTP sent. Please verify to complete registration.",
         "user_id": user_id,
     }
 
