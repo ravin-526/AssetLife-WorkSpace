@@ -147,3 +147,31 @@
 {"timestamp": "2026-03-10T19:53:06.414261+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
 {"timestamp": "2026-03-10T19:53:23.200316+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual user registered"}
 {"timestamp": "2026-03-10T19:53:46.344881+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:00:57.333437+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-10T20:00:57.593945+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-10T20:02:54.404441+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:03:04.640867+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:07:59.410950+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:08:13.077500+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:10:12.876629+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:10:21.781945+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:14:53.354489+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:15:07.176484+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:20:03.941172+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:20:20.014763+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:23:55.918730+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-10T20:23:56.178378+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-10T20:25:32.340350+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:25:35.098353+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:31:29.400356+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-10T20:31:29.676695+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-10T20:32:38.844784+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:32:40.374255+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T20:36:39.948358+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-10T20:36:40.233322+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-10T20:51:24.384807+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T20:51:26.384387+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T21:00:46.911341+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-10T21:00:47.307559+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-10T21:17:00.196796+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T21:17:02.401513+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}

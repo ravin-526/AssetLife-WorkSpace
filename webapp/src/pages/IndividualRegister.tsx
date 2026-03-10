@@ -17,11 +17,14 @@ import {
 import api from "../services/api.ts";
 import useUserStore, { UserData } from "../store/userStore.ts";
 import { LOGO } from "../constants/logo.ts";
-import { COLORS, getTheme } from "../styles/theme.ts";
+import { getTheme } from "../styles/theme";
 
 type RegisterResponse = {
   message?: string;
   user_id?: string;
+  otp?: string;
+  dev_otp?: string;
+  debug_otp?: string;
 };
 
 type VerifyOtpResponse = {
@@ -55,6 +58,9 @@ const IndividualRegister = () => {
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [isOtpButtonDisabled, setIsOtpButtonDisabled] = useState(false);
 
+  const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  const isProduction = runtimeEnv?.NODE_ENV === "production";
+
   useEffect(() => {
     if (otpCooldown <= 0) {
       setIsOtpButtonDisabled(false);
@@ -80,7 +86,7 @@ const IndividualRegister = () => {
     const value = emailOrPhone.trim();
     const isEmail = value.includes("@");
     const mobile = isEmail ? "" : value.replace(/\s+/g, "");
-    const email = isEmail ? value.toLowerCase() : `${mobile}@assetlife.local`;
+    const email = isEmail ? value.toLowerCase() : "";
 
     return { isEmail, mobile, email };
   };
@@ -141,23 +147,28 @@ const IndividualRegister = () => {
 
     try {
       setRegistering(true);
+      let otpResponse: RegisterResponse | { message?: string; otp?: string; dev_otp?: string; debug_otp?: string } | null = null;
       if (!registered) {
-        await api.post<RegisterResponse>("/individual/register", {
+        const response = await api.post<RegisterResponse>("/individual/register", {
           name: name.trim(),
-          email,
+          email: email || undefined,
           mobile,
           dob: "1970-01-01",
           pan: "AAAAA0000A",
         });
+        otpResponse = response.data;
       } else {
-        await api.post<{ message?: string }>("/individual/send-otp", {
+        const response = await api.post<{ message?: string; otp?: string; dev_otp?: string; debug_otp?: string }>("/individual/send-otp", {
           mobile,
         });
+        otpResponse = response.data;
       }
 
       setRegistered(true);
       setOtpSent(true);
-      setOtp("");
+      const otpFromResponse = otpResponse?.otp ?? otpResponse?.dev_otp ?? otpResponse?.debug_otp;
+      const otpFromMessage = otpResponse?.message?.match(/\b(\d{4,8})\b/)?.[1];
+      setOtp(isProduction ? "" : (otpFromResponse ?? otpFromMessage ?? ""));
       setOtpCooldown(30);
       setIsOtpButtonDisabled(true);
       setMessage("OTP sent. Please verify to complete registration.");

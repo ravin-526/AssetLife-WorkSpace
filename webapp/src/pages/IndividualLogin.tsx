@@ -17,10 +17,13 @@ import {
 import api from "../services/api.ts";
 import useUserStore from "../store/userStore.ts";
 import { LOGO } from "../constants/logo.ts";
-import { COLORS, getTheme } from "../styles/theme.ts";
+import { getTheme } from "../styles/theme";
 
 type RequestOtpResponse = {
   message?: string;
+  otp?: string;
+  dev_otp?: string;
+  debug_otp?: string;
 };
 
 type VerifyOtpResponse = {
@@ -54,6 +57,9 @@ const IndividualLogin = () => {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [isOtpButtonDisabled, setIsOtpButtonDisabled] = useState(false);
+
+  const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  const isProduction = runtimeEnv?.NODE_ENV === "production";
 
   useEffect(() => {
     if (otpCooldown <= 0) {
@@ -126,7 +132,9 @@ const IndividualLogin = () => {
       });
 
       setOtpSent(true);
-      setOtp("");
+      const otpFromResponse = response.data.otp ?? response.data.dev_otp ?? response.data.debug_otp;
+      const otpFromMessage = response.data.message?.match(/\b(\d{4,8})\b/)?.[1];
+      setOtp(isProduction ? "" : (otpFromResponse ?? otpFromMessage ?? ""));
       setMessage(response.data.message ?? "OTP sent successfully");
       setOtpCooldown(30);
       setIsOtpButtonDisabled(true);
@@ -166,7 +174,14 @@ const IndividualLogin = () => {
       }, 600);
     } catch (requestError: unknown) {
       const backendMessage = requestError instanceof Error ? requestError.message : "OTP verification failed";
-      setError(backendMessage.toLowerCase().includes("invalid otp") ? "Invalid OTP. Please try again." : backendMessage);
+      const normalized = backendMessage.toLowerCase();
+      if (normalized.includes("expired")) {
+        setError("OTP expired. Please request a new OTP.");
+      } else if (normalized.includes("invalid otp") || normalized.includes("incorrect otp")) {
+        setError("Incorrect OTP");
+      } else {
+        setError(backendMessage);
+      }
       setOtpSent(true);
     } finally {
       setVerifyingOtp(false);
