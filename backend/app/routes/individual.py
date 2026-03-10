@@ -5,8 +5,10 @@ from typing import Any
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.config import settings
 from app.core.crypto import encrypt_value, hash_value
 from app.core.exceptions import AuthenticationError, ConflictError, NotFoundError
 from app.core.jwt import create_access_token
@@ -117,7 +119,8 @@ async def send_otp(payload: SendOtpRequest, db=Depends(get_db)) -> dict[str, str
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=_OTP_TTL_MINUTES),
     }
 
-    print(f"Generated OTP for {payload.mobile}: {otp}")
+    if settings.DEBUG:
+        print(f"Generated OTP for {payload.mobile}: {otp}")
 
     app_logger.info("OTP generated for individual login", extra={"user_id": str(user["_id"])})
     return {"message": "OTP sent successfully"}
@@ -138,7 +141,13 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
         raise AuthenticationError("OTP expired. Please request a new OTP")
 
     if otp_record.get("otp") != payload.otp:
-        raise AuthenticationError("Invalid OTP")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": "Invalid OTP. Please try again.",
+            },
+        )
 
     user = await collection.find_one({"mobile_hash": mobile_hash})
     if not user:
