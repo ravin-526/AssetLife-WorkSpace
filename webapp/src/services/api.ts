@@ -3,7 +3,11 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import useUserStore from "../store/userStore.ts";
 
 type ApiErrorBody = {
-  detail?: string;
+  detail?: string | {
+    status?: string;
+    message?: string;
+  };
+  status?: string;
   message?: string;
   error?: {
     message?: string;
@@ -22,13 +26,15 @@ export const getAuthorizationHeader = (): Record<string, string> => {
 
 const extractErrorMessage = (error: AxiosError<ApiErrorBody>): string => {
   const status = error.response?.status;
-  const detail =
-    error.response?.data?.detail ||
+  const detail = error.response?.data?.detail;
+  const detailMessage = typeof detail === "string" ? detail : detail?.message;
+  const message =
+    detailMessage ||
     error.response?.data?.message ||
     error.response?.data?.error?.message;
 
-  if (detail) {
-    return detail;
+  if (message) {
+    return message;
   }
 
   if (status === 401) {

@@ -1,19 +1,28 @@
-import { FormEvent, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  Alert,
+  Box,
+  Button,
+  CssBaseline,
+  Link as MuiLink,
+  Paper,
+  Stack,
+  TextField,
+  ThemeProvider,
+  Typography,
+  useMediaQuery,
+} from "@mui/material";
 
 import api from "../services/api.ts";
 import useUserStore, { UserData } from "../store/userStore.ts";
-import theme from "../styles/theme.ts";
+import { LOGO } from "../constants/logo.ts";
+import { COLORS, getTheme } from "../styles/theme.ts";
 
-type RegisterForm = {
-  name: string;
-  email?: string;
-  phone: string;
-  date_of_birth?: string;
-  pan?: string;
+type RegisterResponse = {
+  message?: string;
+  user_id?: string;
 };
-
-type RegisterErrors = Partial<Record<keyof RegisterForm, string>>;
 
 type RequestOtpResponse = {
   message?: string;
@@ -29,236 +38,313 @@ type VerifyOtpResponse = {
 const IndividualRegister = () => {
   const navigate = useNavigate();
   const login = useUserStore((state) => state.login);
-  const [form, setForm] = useState<RegisterForm>({
-    name: "",
-    email: "",
-    phone: "",
-    date_of_birth: "",
-    pan: "",
-  });
-  const [otp, setOtp] = useState<string>("");
+
+  const prefersDarkMode = useMediaQuery("(prefers-color-scheme: dark)");
+  const mode = prefersDarkMode ? "dark" : "light";
+  const theme = useMemo(() => getTheme(mode), [mode]);
+
+  const [name, setName] = useState("");
+  const [emailOrPhone, setEmailOrPhone] = useState("");
+  const [otp, setOtp] = useState("");
+
+  const [registered, setRegistered] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  const [errors, setErrors] = useState<RegisterErrors>({});
-  const [focusedField, setFocusedField] = useState<keyof RegisterForm | "otp" | null>(null);
+
+  const [errors, setErrors] = useState<{ name?: string; emailOrPhone?: string; otp?: string }>({});
   const [message, setMessage] = useState<string>("");
-  const [apiError, setApiError] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string>("");
 
-  const validate = (): boolean => {
-    const nextErrors: RegisterErrors = {};
+  const [registering, setRegistering] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
 
-    if (!form.name.trim()) {
+  const parseContact = () => {
+    const value = emailOrPhone.trim();
+    const isEmail = value.includes("@");
+    const mobile = isEmail ? "" : value.replace(/\s+/g, "");
+    const email = isEmail ? value.toLowerCase() : `${mobile}@assetlife.local`;
+
+    return { isEmail, mobile, email };
+  };
+
+  const validateRegister = () => {
+    const nextErrors: { name?: string; emailOrPhone?: string } = {};
+
+    if (!name.trim()) {
       nextErrors.name = "Name is required";
     }
-    if (form.email && form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      nextErrors.email = "Email format is invalid";
-    }
-    if (!form.phone.trim()) {
-      nextErrors.phone = "Phone is required";
-    } else if (!/^\d{10}$/.test(form.phone.trim())) {
-      nextErrors.phone = "Phone must be 10 digits";
-    }
-    if (form.pan && form.pan.trim() && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(form.pan.trim())) {
-      nextErrors.pan = "PAN format is invalid";
+
+    if (!emailOrPhone.trim()) {
+      nextErrors.emailOrPhone = "Email or phone is required";
+    } else {
+      const { isEmail, mobile } = parseContact();
+      if (isEmail) {
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailOrPhone.trim());
+        if (!isValidEmail) {
+          nextErrors.emailOrPhone = "Please enter a valid email";
+        }
+      } else if (!/^\d{10,15}$/.test(mobile)) {
+        nextErrors.emailOrPhone = "Please enter a valid mobile number";
+      }
     }
 
-    setErrors(nextErrors);
+    setErrors((prev) => ({ ...prev, ...nextErrors }));
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleRegistration = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setMessage("");
-    setApiError("");
+  const validateOtp = () => {
+    if (!otp.trim()) {
+      setErrors((prev) => ({ ...prev, otp: "OTP is required" }));
+      return false;
+    }
+    if (!/^\d{4,8}$/.test(otp.trim())) {
+      setErrors((prev) => ({ ...prev, otp: "Please enter a valid OTP" }));
+      return false;
+    }
 
-    if (!validate()) {
+    setErrors((prev) => ({ ...prev, otp: undefined }));
+    return true;
+  };
+
+  const handleRegister = async () => {
+    setError("");
+    setMessage("");
+
+    if (!validateRegister()) {
+      return;
+    }
+
+    const { mobile, email } = parseContact();
+
+    if (!mobile) {
+      setError("Registration currently requires phone input for OTP flow.");
       return;
     }
 
     try {
-      setIsLoading(true);
-      await api.post("/individual/register", {
-        name: form.name.trim(),
-        email: form.email?.trim() ? form.email.trim().toLowerCase() : `${form.phone.trim()}@assetlife.local`,
-        mobile: form.phone.trim(),
-        dob: form.date_of_birth || "1970-01-01",
-        pan: form.pan?.trim() ? form.pan.trim().toUpperCase() : "AAAAA0000A",
+      setRegistering(true);
+      const response = await api.post<RegisterResponse>("/individual/register", {
+        name: name.trim(),
+        email,
+        mobile,
+        dob: "1970-01-01",
+        pan: "AAAAA0000A",
       });
 
-      const otpResponse = await api.post<RequestOtpResponse>("/individual/send-otp", {
-        mobile: form.phone.trim(),
+      setRegistered(true);
+      setMessage(response.data.message ?? "Registration successful. You can now send OTP.");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Registration failed");
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    setError("");
+    setMessage("");
+
+    const { mobile } = parseContact();
+
+    if (!mobile) {
+      setError("Please enter a valid phone number to receive OTP.");
+      return;
+    }
+
+    if (!registered) {
+      setError("Please complete registration before requesting OTP.");
+      return;
+    }
+
+    try {
+      setSendingOtp(true);
+      const response = await api.post<RequestOtpResponse>("/individual/send-otp", {
+        mobile,
       });
 
       setOtpSent(true);
-      setMessage(otpResponse.data.message ?? "OTP sent. Verify to complete registration.");
-    } catch (error: unknown) {
-      setApiError(error instanceof Error ? error.message : "Registration failed");
+      setOtp("");
+      setMessage(response.data.message ?? "OTP sent successfully");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to send OTP");
     } finally {
-      setIsLoading(false);
+      setSendingOtp(false);
     }
   };
 
   const handleVerifyOtp = async () => {
-    setApiError("");
+    setError("");
     setMessage("");
 
-    if (!otp.trim()) {
-      setApiError("OTP is required");
+    const { mobile, email } = parseContact();
+
+    if (!mobile) {
+      setError("Please enter a valid phone number.");
+      return;
+    }
+
+    if (!validateOtp()) {
       return;
     }
 
     try {
-      setIsLoading(true);
+      setVerifyingOtp(true);
       const response = await api.post<VerifyOtpResponse>("/individual/verify-otp", {
-        mobile: form.phone.trim(),
+        mobile,
         otp: otp.trim(),
       });
 
       const token = response.data.access_token ?? response.data.token;
       if (!token) {
-        setApiError("Verification failed: token not returned");
+        setError("Verification failed: token not returned");
         return;
       }
 
-      login(token, response.data.user ?? {
-        name: form.name.trim(),
-        phone: form.phone.trim(),
-        email: form.email?.trim() || undefined,
-      });
+      login(token, response.data.user ?? { name: name.trim(), phone: mobile, email });
+      setMessage(response.data.message ?? "OTP verified successfully. Redirecting...");
 
-      navigate("/dashboard", { replace: true });
-    } catch (error: unknown) {
-      setApiError(error instanceof Error ? error.message : "OTP verification failed");
+      setTimeout(() => {
+        navigate("/dashboard", { replace: true });
+      }, 600);
+    } catch (requestError: unknown) {
+      const backendMessage = requestError instanceof Error ? requestError.message : "OTP verification failed";
+      setError(backendMessage.toLowerCase().includes("invalid otp") ? "Invalid OTP. Please try again." : backendMessage);
+      setOtpSent(true);
     } finally {
-      setIsLoading(false);
+      setVerifyingOtp(false);
     }
   };
 
-  const inputStyle = (field: keyof RegisterForm | "otp", hasError: boolean) => ({
-    width: "100%",
-    height: "44px",
-    borderRadius: theme.inputs.borderRadius,
-    border: `1px solid ${hasError ? theme.inputs.error : focusedField === field ? theme.inputs.focus : theme.inputs.border}`,
-    padding: `0 ${theme.spacing.md}`,
-    fontSize: theme.fonts.fontSizes.body,
-    boxSizing: "border-box" as const,
-    outline: "none",
-  });
-
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background: theme.colors.background,
-        padding: theme.spacing.lg,
-        fontFamily: theme.fonts.fontFamily,
-      }}
-    >
-      <form
-        onSubmit={handleRegistration}
-        style={{
-          width: "100%",
-          maxWidth: "460px",
-          background: theme.cards.background,
-          borderRadius: theme.cards.borderRadius,
-          boxShadow: theme.cards.shadow,
-          padding: theme.spacing.xl,
-          boxSizing: "border-box",
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          px: 2,
+          bgcolor: "background.default",
         }}
       >
-        <h1 style={{ marginTop: 0, color: theme.colors.textPrimary, fontSize: theme.fonts.fontSizes.heading }}>
-          Individual Registration
-        </h1>
-
-        {([
-          ["name", "Name", "text"],
-          ["email", "Email (optional)", "email"],
-          ["phone", "Phone", "tel"],
-          ["date_of_birth", "Date of Birth (optional)", "date"],
-          ["pan", "PAN (optional)", "text"],
-        ] as const).map(([key, label, type]) => (
-          <div key={key} style={{ marginBottom: theme.spacing.md }}>
-            <label htmlFor={key} style={{ display: "block", marginBottom: theme.spacing.xs }}>
-              {label}
-            </label>
-            <input
-              id={key}
-              type={type}
-              value={form[key]}
-              onChange={(event) => setForm((prev) => ({ ...prev, [key]: event.target.value }))}
-              onFocus={() => setFocusedField(key)}
-              onBlur={() => setFocusedField(null)}
-              style={inputStyle(key, Boolean(errors[key]))}
-              aria-invalid={Boolean(errors[key])}
-            />
-            {errors[key] ? <p style={{ color: theme.colors.error, margin: `${theme.spacing.xs} 0 0` }}>{errors[key]}</p> : null}
-          </div>
-        ))}
-
-        {otpSent ? (
-          <div style={{ marginBottom: theme.spacing.md }}>
-            <label htmlFor="otp" style={{ display: "block", marginBottom: theme.spacing.xs }}>
-              OTP
-            </label>
-            <input
-              id="otp"
-              type="text"
-              value={otp}
-              onChange={(event) => setOtp(event.target.value)}
-              onFocus={() => setFocusedField("otp")}
-              onBlur={() => setFocusedField(null)}
-              style={inputStyle("otp", false)}
-            />
-          </div>
-        ) : null}
-
-        {message ? <p style={{ color: theme.colors.success, marginBottom: theme.spacing.sm }}>{message}</p> : null}
-        {apiError ? <p style={{ color: theme.colors.error, marginBottom: theme.spacing.sm }}>{apiError}</p> : null}
-
-        <button
-          type={otpSent ? "button" : "submit"}
-          onClick={otpSent ? handleVerifyOtp : undefined}
-          disabled={isLoading}
-          style={{
+        <Paper
+          elevation={mode === "dark" ? 2 : 4}
+          sx={{
             width: "100%",
-            height: "44px",
-            border: "none",
-            borderRadius: theme.buttons.primary.borderRadius,
-            background: isLoading ? theme.buttons.disabled.background : theme.buttons.primary.background,
-            color: isLoading ? theme.buttons.disabled.text : theme.buttons.primary.text,
-            fontWeight: theme.fonts.fontWeights.medium,
-            cursor: isLoading ? "not-allowed" : "pointer",
+            maxWidth: 500,
+            p: { xs: 3, sm: 4 },
+            borderRadius: 3,
+            bgcolor: "background.paper",
+            border: "1px solid",
+            borderColor: "divider",
           }}
         >
-          {isLoading ? "Please wait..." : otpSent ? "Verify OTP" : "Register & Send OTP"}
-        </button>
+          <Stack spacing={3}>
+            <Box sx={{ textAlign: "center" }}>
+              <Box
+                component="img"
+                src={LOGO}
+                alt="AssetLife Logo"
+                sx={{
+                  width: 56,
+                  height: 56,
+                  display: "block",
+                  mx: "auto",
+                  mb: 1,
+                }}
+              />
+              <Typography variant="h5">AssetLife</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Individual Registration
+              </Typography>
+            </Box>
 
-        <button
-          type="button"
-          onClick={() => navigate("/login")}
-          style={{
-            width: "100%",
-            height: "44px",
-            marginTop: theme.spacing.sm,
-            border: "none",
-            borderRadius: theme.buttons.secondary.borderRadius,
-            background: theme.buttons.secondary.background,
-            color: theme.buttons.secondary.text,
-            fontWeight: theme.fonts.fontWeights.medium,
-            cursor: "pointer",
-          }}
-        >
-          Login
-        </button>
+            {error ? <Alert severity="error">{error}</Alert> : null}
+            {message ? <Alert severity="success">{message}</Alert> : null}
 
-        <p style={{ marginTop: theme.spacing.md, marginBottom: 0, color: theme.colors.textSecondary }}>
-          Already have an account? <Link to="/login">Login here</Link>
-        </p>
-      </form>
-    </main>
+            <TextField
+              label="Full Name"
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                if (errors.name) {
+                  setErrors((prev) => ({ ...prev, name: undefined }));
+                }
+              }}
+              error={Boolean(errors.name)}
+              helperText={errors.name}
+              fullWidth
+            />
+
+            <TextField
+              label="Email or Phone"
+              placeholder="Enter email or mobile number"
+              value={emailOrPhone}
+              onChange={(event) => {
+                setEmailOrPhone(event.target.value);
+                if (errors.emailOrPhone) {
+                  setErrors((prev) => ({ ...prev, emailOrPhone: undefined }));
+                }
+              }}
+              error={Boolean(errors.emailOrPhone)}
+              helperText={errors.emailOrPhone}
+              fullWidth
+            />
+
+            {otpSent ? (
+              <TextField
+                label="OTP"
+                placeholder="Enter OTP"
+                value={otp}
+                onChange={(event) => {
+                  setOtp(event.target.value);
+                  if (errors.otp) {
+                    setErrors((prev) => ({ ...prev, otp: undefined }));
+                  }
+                }}
+                error={Boolean(errors.otp)}
+                helperText={errors.otp}
+                fullWidth
+              />
+            ) : null}
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+              <Button
+                variant="contained"
+                onClick={handleRegister}
+                disabled={registering || sendingOtp || verifyingOtp}
+                fullWidth
+              >
+                {registering ? "Registering..." : "Register"}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleSendOtp}
+                disabled={!registered || registering || sendingOtp || verifyingOtp}
+                fullWidth
+              >
+                {sendingOtp ? "Sending OTP..." : "Send OTP"}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleVerifyOtp}
+                disabled={!otpSent || registering || sendingOtp || verifyingOtp}
+                fullWidth
+              >
+                {verifyingOtp ? "Verifying..." : "Verify OTP"}
+              </Button>
+            </Stack>
+
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+              Already have an account?{" "}
+              <MuiLink component={Link} to="/login" underline="hover">
+                Login
+              </MuiLink>
+            </Typography>
+          </Stack>
+        </Paper>
+      </Box>
+    </ThemeProvider>
   );
 };
 

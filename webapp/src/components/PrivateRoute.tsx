@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 
-import useUserStore from "../store/userStore";
+import useUserStore from "../store/userStore.ts";
 
 type PrivateRouteProps = {
   children: ReactNode;
