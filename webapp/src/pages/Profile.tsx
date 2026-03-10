@@ -9,11 +9,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
 
 import api from "../services/api.ts";
 import useUserStore from "../store/userStore.ts";
-import { DISABLED_FIELD, POST_LOGIN_THEME } from "../styles/theme";
+import { POST_LOGIN_THEME } from "../styles/theme";
 
 type ProfileData = {
   id: string;
@@ -65,7 +64,6 @@ const normalizeProfile = (value: ProfileData): ProfileData => ({
 });
 
 const Profile = () => {
-  const muiTheme = useTheme();
   const user = useUserStore((state) => state.user);
   const tokenFromStore = useUserStore((state) => state.token);
   const updateUser = useUserStore((state) => state.updateUser);
@@ -97,8 +95,6 @@ const Profile = () => {
   }, [draft, profile]);
 
   const isIndividual = resolvedRole === "individual";
-  const disabledBackground =
-    muiTheme.palette.mode === "light" ? DISABLED_FIELD.LIGHT_BACKGROUND : DISABLED_FIELD.DARK_BACKGROUND;
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -305,51 +301,12 @@ const Profile = () => {
   }
 
   const editableFieldSx = {
-    "& .MuiInputLabel-root": {
-      lineHeight: 1.2,
-    },
-    "& .MuiInputBase-root": {
-      height: POST_LOGIN_THEME.inputs.postLogin.height,
-      alignItems: "center",
-      lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
-      bgcolor: "background.paper",
-    },
     "& .MuiInputBase-input": {
-      fontSize: POST_LOGIN_THEME.inputs.postLogin.fontSize,
       lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
-      padding: POST_LOGIN_THEME.inputs.postLogin.padding,
-      height: POST_LOGIN_THEME.inputs.postLogin.height,
-      boxSizing: POST_LOGIN_THEME.inputs.postLogin.boxSizing,
-      width: POST_LOGIN_THEME.inputs.postLogin.width,
     },
     "& .MuiInputBase-input::placeholder": {
-      fontSize: POST_LOGIN_THEME.inputs.postLogin.placeholderFontSize,
       lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
       opacity: 1,
-    },
-  };
-
-  const readOnlyFieldSx = {
-    ...editableFieldSx,
-    "& .MuiInputBase-root": {
-      ...editableFieldSx["& .MuiInputBase-root"],
-      bgcolor: disabledBackground,
-      color: DISABLED_FIELD.TEXT,
-      cursor: POST_LOGIN_THEME.inputs.readOnly.cursor,
-      "& .MuiOutlinedInput-notchedOutline": {
-        borderColor: "divider",
-      },
-    },
-    "& .MuiInputBase-input": {
-      ...editableFieldSx["& .MuiInputBase-input"],
-      color: DISABLED_FIELD.TEXT,
-      WebkitTextFillColor: DISABLED_FIELD.TEXT,
-      cursor: POST_LOGIN_THEME.inputs.readOnly.cursor,
-    },
-    "& .MuiInputBase-input::placeholder": {
-      ...editableFieldSx["& .MuiInputBase-input::placeholder"],
-      color: DISABLED_FIELD.TEXT,
-      lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
     },
   };
 
@@ -384,7 +341,8 @@ const Profile = () => {
                 error={Boolean(errors.name)}
                 helperText={errors.name}
                 InputProps={{ readOnly: nameReadOnly }}
-                sx={nameReadOnly ? readOnlyFieldSx : editableFieldSx}
+                className="postLogin"
+                sx={editableFieldSx}
                 fullWidth
               />
             </Box>
@@ -398,7 +356,8 @@ const Profile = () => {
                 error={Boolean(errors.email)}
                 helperText={errors.email}
                 InputProps={{ readOnly: emailReadOnly }}
-                sx={emailReadOnly ? readOnlyFieldSx : editableFieldSx}
+                className="postLogin"
+                sx={editableFieldSx}
                 fullWidth
               />
             </Box>
@@ -408,7 +367,8 @@ const Profile = () => {
                 label="Phone"
                 value={profile.phone}
                 disabled
-                sx={readOnlyFieldSx}
+                className="postLogin readOnly"
+                sx={editableFieldSx}
                 fullWidth
               />
             </Box>
@@ -420,19 +380,20 @@ const Profile = () => {
                   value={editing ? draft.organization : profile.organization}
                   onChange={(event) => setDraft((prev) => ({ ...prev, organization: event.target.value }))}
                   InputProps={{ readOnly: true }}
-                  sx={readOnlyFieldSx}
+                  className="postLogin"
+                  sx={editableFieldSx}
                   fullWidth
                 />
               </Box>
             ) : null}
 
             <Box>
-              <TextField label="Role" value={profile.role} disabled sx={readOnlyFieldSx} fullWidth />
+              <TextField label="Role" value={profile.role} disabled className="postLogin readOnly" sx={editableFieldSx} fullWidth />
             </Box>
           </Box>
 
-          <Typography variant="body2" color="text.secondary" fontWeight={700} sx={{ mb: 1.5 }}>
-            Edit the fields above and click Save Profile to update your profile.
+          <Typography variant="body2" sx={{ color: "primary.main", fontWeight: 700, mb: 1.5 }}>
+            Edit the fields above to update your profile.
           </Typography>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>

@@ -175,3 +175,5 @@
 {"timestamp": "2026-03-10T21:00:47.307559+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
 {"timestamp": "2026-03-10T21:17:00.196796+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
 {"timestamp": "2026-03-10T21:17:02.401513+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-10T21:45:29.124507+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-10T21:45:31.178236+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}

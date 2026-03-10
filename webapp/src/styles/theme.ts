@@ -129,33 +129,33 @@ export const getTheme = (mode: PaletteMode) => {
       MuiTextField: {
         styleOverrides: {
           root: {
-            '& .MuiInputBase-root': {
+            '&.postLogin .MuiInputBase-root': {
               borderRadius: SPACING(1),
               backgroundColor: isLight ? COLORS.LIGHT_HEADER : COLORS.DARK_SIDEBAR,
               color: isLight ? COLORS.LIGHT_TEXT_PRIMARY : COLORS.DARK_TEXT_PRIMARY,
-              minHeight: POST_LOGIN_THEME.inputs.postLogin.height,
+              minHeight: 36,
               alignItems: 'center',
             },
-            '& .MuiInputBase-input': {
+            '&.postLogin .MuiInputBase-input': {
               fontSize: POST_LOGIN_THEME.inputs.postLogin.fontSize,
               lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
-              padding: POST_LOGIN_THEME.inputs.postLogin.padding,
+              padding: `${SPACING(0.75)}px ${SPACING(1.25)}px`,
               boxSizing: POST_LOGIN_THEME.inputs.postLogin.boxSizing,
             },
-            '& .MuiInputBase-input::placeholder': {
+            '&.postLogin .MuiInputBase-input::placeholder': {
               lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
               opacity: 1,
             },
-            '& .MuiInputBase-root.Mui-disabled': {
-              backgroundColor: isLight ? DISABLED_FIELD.LIGHT_BACKGROUND : DISABLED_FIELD.DARK_BACKGROUND,
+            '&.postLogin.readOnly .MuiInputBase-root, &.postLogin .MuiInputBase-root.Mui-disabled': {
+              backgroundColor: isLight ? '#E5E7EB' : '#2A2A2A',
               color: DISABLED_FIELD.TEXT,
             },
-            '& .MuiInputBase-root.Mui-disabled .MuiInputBase-input': {
+            '&.postLogin.readOnly .MuiInputBase-input, &.postLogin .MuiInputBase-root.Mui-disabled .MuiInputBase-input': {
               color: DISABLED_FIELD.TEXT,
               WebkitTextFillColor: DISABLED_FIELD.TEXT,
               lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
             },
-            '& .MuiInputBase-root.Mui-disabled .MuiInputBase-input::placeholder': {
+            '&.postLogin.readOnly .MuiInputBase-input::placeholder, &.postLogin .MuiInputBase-root.Mui-disabled .MuiInputBase-input::placeholder': {
               color: DISABLED_FIELD.TEXT,
               lineHeight: POST_LOGIN_THEME.inputs.postLogin.lineHeight,
               opacity: 1,
