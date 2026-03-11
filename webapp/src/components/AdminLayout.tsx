@@ -21,8 +21,6 @@ import {
 import { useTheme } from "@mui/material/styles";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
-import AssessmentIcon from "@mui/icons-material/Assessment";
-import GroupIcon from "@mui/icons-material/Group";
 import MenuIcon from "@mui/icons-material/Menu";
 import SearchIcon from "@mui/icons-material/Search";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -43,8 +41,6 @@ type MenuItemConfig = {
 const menuItems: MenuItemConfig[] = [
   { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon /> },
   { label: "Assets", path: "/assets", icon: <Inventory2Icon /> },
-  { label: "Reports", path: "/reports", icon: <AssessmentIcon /> },
-  { label: "Users", path: "/users", icon: <GroupIcon /> },
 ];
 
 type AdminLayoutProps = {

@@ -4,8 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 
 import AdminLayout from "./components/AdminLayout.tsx";
 import PrivateRoute from "./components/PrivateRoute.tsx";
+import AssetSuggestions from "./pages/AssetSuggestions.tsx";
 import Assets from "./pages/Assets.tsx";
+import AssetView from "./pages/AssetView.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
+import EmailIntegrations from "./pages/EmailIntegrations.tsx";
+import EmailScans from "./pages/EmailScans.tsx";
 import IndividualLogin from "./pages/IndividualLogin.tsx";
 import IndividualRegister from "./pages/IndividualRegister.tsx";
 import Profile from "./pages/Profile.tsx";
@@ -19,7 +23,12 @@ const getPageTitle = (pathname: string) => {
     "/login": "Login",
     "/register": "Register",
     "/dashboard": "Dashboard",
+    "/integrations/email": "Email Integrations",
+    "/assets/import-gmail": "Import Gmail",
+    "/emails": "Email Scans",
+    "/assets/suggestions": "Asset Suggestions",
     "/assets": "Assets",
+    "/assets/view": "Asset View",
     "/reports": "Reports",
     "/users": "Users",
     "/profile": "Profile",
@@ -65,7 +74,12 @@ const App = () => {
             }
           >
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/integrations/email" element={<EmailIntegrations />} />
+            <Route path="/assets/import-gmail" element={<EmailIntegrations />} />
+            <Route path="/emails" element={<EmailScans />} />
+            <Route path="/assets/suggestions" element={<AssetSuggestions />} />
             <Route path="/assets" element={<Assets />} />
+            <Route path="/assets/:assetId" element={<AssetView />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/users" element={<Users />} />
             <Route path="/profile" element={<Profile />} />
