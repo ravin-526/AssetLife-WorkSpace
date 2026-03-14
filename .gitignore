@@ -1,9 +1,9 @@
 /backend/uploads/
 # Node modules
-node_modules/
+/webappnode_modules/
 
 # Vite/React cache
-webapp/node_modules/.cache/
+/webapp/node_modules/.cache/
 
 # Build output
 dist/
@@ -11,3 +11,7 @@ build/
 
 # Logs
 *.log
+
+webapp/node_modules/
+webapp/node_modules/.cache/
+backend/uploads/
