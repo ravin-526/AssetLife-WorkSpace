@@ -16,6 +16,7 @@ import {
 
 import api from "../services/api.ts";
 import OtpInput from "../components/OtpInput.tsx";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import useUserStore, { UserData } from "../store/userStore.ts";
 import { LOGO } from "../constants/logo.ts";
 import { getTheme } from "../styles/theme";
@@ -53,6 +54,9 @@ const IndividualRegister = () => {
   const [errors, setErrors] = useState<{ name?: string; emailOrPhone?: string; otp?: string }>({});
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
+
+  useAutoDismissMessage(message, setMessage, { delay: 3000 });
+  useAutoDismissMessage(error, setError, { delay: 4000 });
 
   const [registering, setRegistering] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);

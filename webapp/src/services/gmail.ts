@@ -18,13 +18,18 @@ export type MailboxSyncResponse = GmailSyncResponse;
 export type GmailSyncResponse = {
   sync_status: string;
   scanned: number;
+  emails_scanned?: number;
   purchase_emails_detected: number;
+  invoice_emails?: number;
   attachments_detected: number;
+  attachments_found?: number;
   attachments_downloaded: number;
   attachments_processed: number;
   created_suggestions: number;
+  assets_detected?: number;
   skipped_duplicates: number;
   assets_added_by_user: number;
+  suggestions?: AssetSuggestion[];
 };
 
 export type EmailScan = {
@@ -81,18 +86,75 @@ export type SuggestionParseResponse = {
 export type Asset = {
   id: string;
   name: string;
+  asset_name?: string | null;
   vendor?: string | null;
   purchase_date?: string | null;
   price?: number | null;
   source: string;
   user_id: string;
   brand?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
+  serial_number?: string | null;
+  model_number?: string | null;
+  warranty?: Record<string, unknown> | null;
+  insurance?: Record<string, unknown> | null;
+  service?: Record<string, unknown> | null;
   source_email_id?: string | null;
   source_email_sender?: string | null;
   source_email_subject?: string | null;
   invoice_attachment_path?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type AssetLifecyclePayload = {
+  warranty?: {
+    available?: boolean;
+    provider?: string;
+    type?: string;
+    start_date?: string;
+    end_date?: string;
+    notes?: string;
+    reminders?: {
+      thirty_days_before?: boolean;
+      seven_days_before?: boolean;
+      on_expiry?: boolean;
+    };
+  } | null;
+  insurance?: {
+    available?: boolean;
+    provider?: string;
+    policy_number?: string;
+    start_date?: string;
+    expiry_date?: string;
+    premium_amount?: number;
+    notes?: string;
+    coverage_notes?: string;
+    reminders?: {
+      forty_five_days_before?: boolean;
+      fifteen_days_before?: boolean;
+    };
+  } | null;
+  service?: {
+    required?: boolean;
+    frequency?: string;
+    custom_interval_days?: number;
+    reminder_enabled?: boolean;
+  } | null;
+};
+
+export type UploadedAssetDocument = {
+  document_id: string;
+  file_name: string;
+  document_type: string;
+  file_url: string;
+  uploaded_at: string;
+};
+
+export type AssetCategoryOption = {
+  category: string;
+  subcategories: string[];
 };
 
 export type AssetUpdatePayload = {
@@ -199,13 +261,54 @@ export const parseSuggestionAttachment = async (suggestionId: string): Promise<S
 export const createAsset = async (payload: {
   name: string;
   brand?: string;
+  category: string;
+  subcategory: string;
   vendor?: string;
   purchase_date?: string;
   price?: number;
+  serial_number?: string;
+  model_number?: string;
+  lifecycle_info?: AssetLifecyclePayload;
   source?: string;
   suggestion_id?: string;
 }): Promise<Asset> => {
   const response = await api.post<Asset>("/api/assets", payload);
+  return response.data;
+};
+
+export const getAssetCategories = async (): Promise<AssetCategoryOption[]> => {
+  const response = await api.get<AssetCategoryOption[]>("/api/categories");
+  return response.data;
+};
+
+export const uploadAssetDocuments = async (assetId: string, files: File[]): Promise<{
+  asset_id: string;
+  uploaded: UploadedAssetDocument[];
+}> => {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append("files", file);
+  });
+
+  const response = await api.post(`/api/assets/${assetId}/documents`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return response.data as {
+    asset_id: string;
+    uploaded: UploadedAssetDocument[];
+  };
+};
+
+export const getAssetDocuments = async (assetId: string): Promise<UploadedAssetDocument[]> => {
+  const response = await api.get<UploadedAssetDocument[]>(`/api/assets/${assetId}/documents`);
+  return response.data;
+};
+
+export const deleteAssetDocument = async (assetId: string, documentId: string): Promise<{ status: string; document_id: string }> => {
+  const response = await api.delete<{ status: string; document_id: string }>(`/api/assets/${assetId}/documents/${documentId}`);
   return response.data;
 };
 
@@ -259,6 +362,15 @@ export const fetchAssetInvoiceBlob = async (assetId: string): Promise<Blob> => {
 export const fetchSuggestionAttachmentBlob = async (suggestionId: string): Promise<Blob> => {
   const headers = requireAuthHeader();
   const response = await api.get(`/api/assets/suggestions/${suggestionId}/attachment`, {
+    headers,
+    responseType: "blob",
+  });
+  return response.data as Blob;
+};
+
+export const fetchAssetDocumentBlob = async (assetId: string, documentId: string): Promise<Blob> => {
+  const headers = requireAuthHeader();
+  const response = await api.get(`/api/assets/${assetId}/documents/${documentId}/file`, {
     headers,
     responseType: "blob",
   });

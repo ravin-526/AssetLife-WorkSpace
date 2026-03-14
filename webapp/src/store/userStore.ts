@@ -23,9 +23,14 @@ type UserStoreActions = {
 
 export type UserStore = UserStoreState & UserStoreActions;
 
-const TOKEN_KEY = "jwt_token";
+const TOKEN_KEY = "access_token";
+const LEGACY_TOKEN_KEY = "jwt_token";
 
-const persistedToken = localStorage.getItem(TOKEN_KEY);
+const persistedToken = localStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(LEGACY_TOKEN_KEY);
+
+if (!localStorage.getItem(TOKEN_KEY) && persistedToken) {
+  localStorage.setItem(TOKEN_KEY, persistedToken);
+}
 
 const useUserStore = create<UserStore>((set) => ({
   token: persistedToken,
@@ -33,6 +38,7 @@ const useUserStore = create<UserStore>((set) => ({
   isAuthenticated: Boolean(persistedToken),
   login: (token, user) => {
     localStorage.setItem(TOKEN_KEY, token);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
     set({
       token,
       user,
@@ -41,6 +47,7 @@ const useUserStore = create<UserStore>((set) => ({
   },
   logout: () => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
     set({
       token: null,
       user: null,

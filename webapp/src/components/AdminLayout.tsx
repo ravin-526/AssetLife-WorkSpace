@@ -24,6 +24,7 @@ import Inventory2Icon from "@mui/icons-material/Inventory2";
 import MenuIcon from "@mui/icons-material/Menu";
 import SearchIcon from "@mui/icons-material/Search";
 import SettingsIcon from "@mui/icons-material/Settings";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -41,6 +42,7 @@ type MenuItemConfig = {
 const menuItems: MenuItemConfig[] = [
   { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon /> },
   { label: "Assets", path: "/assets", icon: <Inventory2Icon /> },
+  { label: "Reminders", path: "/reminders", icon: <NotificationsNoneIcon /> },
 ];
 
 type AdminLayoutProps = {

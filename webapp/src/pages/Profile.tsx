@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 
 import api from "../services/api.ts";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import useUserStore from "../store/userStore.ts";
 import { POST_LOGIN_THEME } from "../styles/theme";
 
@@ -76,6 +77,9 @@ const Profile = () => {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [errors, setErrors] = useState<Partial<Record<keyof ProfileData, string>>>({});
+
+  useAutoDismissMessage(message, setMessage, { delay: 3000 });
+  useAutoDismissMessage(error, setError, { delay: 4000 });
 
   const storedToken = tokenFromStore ?? localStorage.getItem("jwt_token");
   const jwtPayload = useMemo(() => (storedToken ? parseJwtPayload(storedToken) : null), [storedToken]);
