@@ -1,0 +1,13 @@
+/backend/uploads/
+# Node modules
+node_modules/
+
+# Vite/React cache
+webapp/node_modules/.cache/
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
