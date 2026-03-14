@@ -310,109 +310,203 @@ const Profile = () => {
     },
   };
 
+  const standardControlHeight = 36;
+  const standardFieldSx = {
+    "& .MuiInputBase-root": {
+      height: standardControlHeight,
+    },
+  };
+
+  const getNameParts = (fullName: string) => {
+    const trimmed = fullName.trim();
+    if (!trimmed) {
+      return { firstName: "", lastName: "" };
+    }
+
+    const segments = trimmed.split(/\s+/);
+    return {
+      firstName: segments[0] ?? "",
+      lastName: segments.slice(1).join(" "),
+    };
+  };
+
+  const nameSource = editing ? draft.name : profile.name;
+  const { firstName, lastName } = getNameParts(nameSource);
+
   const nameReadOnly = !editing || saving;
   const emailReadOnly = !editing || saving || !isIndividual;
 
   return (
-    <Box>
-      <Typography variant="h4" sx={{ mb: 2 }}>
-        Profile
-      </Typography>
+    <Box className="grid" sx={{ alignContent: "flex-start" }}>
+      <Box className="col-12">
+        <Typography variant="h4">Profile</Typography>
+      </Box>
 
-      <Paper sx={{ p: { xs: 2, md: 3 } }}>
-        <Stack sx={{ gap: POST_LOGIN_THEME.form.groupSpacing }}>
+      <Box className="col-12">
+        <Stack spacing={3}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {message ? <Alert severity="success">{message}</Alert> : null}
 
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-              columnGap: 2,
-              rowGap: POST_LOGIN_THEME.form.rowSpacing,
-            }}
-          >
-            <Box>
-              <TextField
-                label="Name"
-                value={editing ? draft.name : profile.name}
-                onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
-                onFocus={handleFieldFocus}
-                error={Boolean(errors.name)}
-                helperText={errors.name}
-                InputProps={{ readOnly: nameReadOnly }}
-                className="postLogin"
-                sx={editableFieldSx}
-                fullWidth
-              />
-            </Box>
+          <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack spacing={2}>
+              <Typography variant="h6">Account Information</Typography>
+              <div className="grid">
+                <div className="col-12 md:col-6">
+                  <TextField
+                    size="small"
+                    label="First Name"
+                    value={firstName}
+                    onChange={(event) => {
+                      const nextFirst = event.target.value;
+                      const combined = `${nextFirst.trim()} ${lastName}`.trim();
+                      setDraft((prev) => ({ ...prev, name: combined }));
+                    }}
+                    onFocus={handleFieldFocus}
+                    error={Boolean(errors.name)}
+                    helperText={errors.name}
+                    InputProps={{ readOnly: nameReadOnly }}
+                    className="postLogin"
+                    sx={{ ...editableFieldSx, ...standardFieldSx }}
+                    fullWidth
+                  />
+                </div>
 
-            <Box>
-              <TextField
-                label="Email"
-                value={editing ? draft.email : profile.email}
-                onChange={(event) => setDraft((prev) => ({ ...prev, email: event.target.value }))}
-                onFocus={isIndividual ? handleFieldFocus : undefined}
-                error={Boolean(errors.email)}
-                helperText={errors.email}
-                InputProps={{ readOnly: emailReadOnly }}
-                className="postLogin"
-                sx={editableFieldSx}
-                fullWidth
-              />
-            </Box>
+                <div className="col-12 md:col-6">
+                  <TextField
+                    size="small"
+                    label="Last Name"
+                    value={lastName}
+                    onChange={(event) => {
+                      const nextLast = event.target.value;
+                      const combined = `${firstName} ${nextLast.trim()}`.trim();
+                      setDraft((prev) => ({ ...prev, name: combined }));
+                    }}
+                    onFocus={handleFieldFocus}
+                    InputProps={{ readOnly: nameReadOnly }}
+                    className="postLogin"
+                    sx={{ ...editableFieldSx, ...standardFieldSx }}
+                    fullWidth
+                  />
+                </div>
 
-            <Box>
-              <TextField
-                label="Phone"
-                value={profile.phone}
-                disabled
-                className="postLogin readOnly"
-                sx={editableFieldSx}
-                fullWidth
-              />
-            </Box>
+                <div className="col-12 md:col-6">
+                  <TextField
+                    size="small"
+                    label="Email"
+                    value={editing ? draft.email : profile.email}
+                    onChange={(event) => setDraft((prev) => ({ ...prev, email: event.target.value }))}
+                    onFocus={isIndividual ? handleFieldFocus : undefined}
+                    error={Boolean(errors.email)}
+                    helperText={errors.email}
+                    InputProps={{ readOnly: emailReadOnly }}
+                    className="postLogin"
+                    sx={{ ...editableFieldSx, ...standardFieldSx }}
+                    fullWidth
+                  />
+                </div>
 
-            {!isIndividual ? (
-              <Box>
-                <TextField
-                  label="Organization"
-                  value={editing ? draft.organization : profile.organization}
-                  onChange={(event) => setDraft((prev) => ({ ...prev, organization: event.target.value }))}
-                  InputProps={{ readOnly: true }}
-                  className="postLogin"
-                  sx={editableFieldSx}
-                  fullWidth
-                />
+                <div className="col-12 md:col-6">
+                  <TextField
+                    size="small"
+                    label="Phone Number"
+                    value={profile.phone}
+                    disabled
+                    className="postLogin readOnly"
+                    sx={{ ...editableFieldSx, ...standardFieldSx }}
+                    fullWidth
+                  />
+                </div>
+              </div>
+            </Stack>
+          </Paper>
+
+          {!isIndividual ? (
+            <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+              <Stack spacing={2}>
+                <Typography variant="h6">Organization Details</Typography>
+                <div className="grid">
+                  <div className="col-12 md:col-6">
+                    <TextField
+                      size="small"
+                      label="Company Name"
+                      value={editing ? draft.organization : profile.organization}
+                      onChange={(event) => setDraft((prev) => ({ ...prev, organization: event.target.value }))}
+                      InputProps={{ readOnly: true }}
+                      className="postLogin"
+                      sx={{ ...editableFieldSx, ...standardFieldSx }}
+                      fullWidth
+                    />
+                  </div>
+                  <div className="col-12 md:col-6">
+                    <TextField
+                      size="small"
+                      label="Account Type"
+                      value={isIndividual ? "Individual" : "Organization"}
+                      InputProps={{ readOnly: true }}
+                      className="postLogin readOnly"
+                      sx={{ ...editableFieldSx, ...standardFieldSx }}
+                      fullWidth
+                    />
+                  </div>
+                  <div className="col-12 md:col-6">
+                    <TextField
+                      size="small"
+                      label="Role"
+                      value={profile.role}
+                      InputProps={{ readOnly: true }}
+                      className="postLogin readOnly"
+                      sx={{ ...editableFieldSx, ...standardFieldSx }}
+                      fullWidth
+                    />
+                  </div>
+                  <div className="col-12 md:col-6">
+                    <TextField
+                      size="small"
+                      label="Registration Date"
+                      value="-"
+                      InputProps={{ readOnly: true }}
+                      className="postLogin readOnly"
+                      sx={{ ...editableFieldSx, ...standardFieldSx }}
+                      fullWidth
+                    />
+                  </div>
+                </div>
+              </Stack>
+            </Paper>
+          ) : null}
+
+          <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack spacing={2}>
+              <Typography variant="h6">Security Settings</Typography>
+              <Alert severity="info">Password and additional authentication controls can be managed from this section.</Alert>
+            </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+            <Stack spacing={1.5}>
+              <Typography variant="caption" sx={{ color: "primary.main", fontWeight: 700, fontSize: "0.8rem" }}>
+                Update your details and click Save Profile to apply changes.
+              </Typography>
+
+              <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                <Button
+                  variant="contained"
+                  onClick={handleSave}
+                  disabled={!hasChanges || saving}
+                  sx={{
+                    fontSize: POST_LOGIN_THEME.buttons.postLogin.fontSize,
+                    px: POST_LOGIN_THEME.buttons.postLogin.padding.split(" ")[1],
+                    height: POST_LOGIN_THEME.inputs.postLogin.height,
+                    minHeight: POST_LOGIN_THEME.inputs.postLogin.height,
+                  }}
+                >
+                  {saving ? "Saving..." : "Save Profile"}
+                </Button>
               </Box>
-            ) : null}
-
-            <Box>
-              <TextField label="Role" value={profile.role} disabled className="postLogin readOnly" sx={editableFieldSx} fullWidth />
-            </Box>
-          </Box>
-
-          <Typography variant="body2" sx={{ color: "primary.main", fontWeight: 700, mb: 1.5 }}>
-            Edit the fields above to update your profile.
-          </Typography>
-
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <Button
-              variant="contained"
-              onClick={handleSave}
-              disabled={!hasChanges || saving}
-              sx={{
-                fontSize: POST_LOGIN_THEME.buttons.postLogin.fontSize,
-                px: POST_LOGIN_THEME.buttons.postLogin.padding.split(" ")[1],
-                height: POST_LOGIN_THEME.inputs.postLogin.height,
-                minHeight: POST_LOGIN_THEME.inputs.postLogin.height,
-              }}
-            >
-              {saving ? "Saving..." : "Save Profile"}
-            </Button>
-          </Stack>
+            </Stack>
+          </Paper>
         </Stack>
-      </Paper>
+      </Box>
     </Box>
   );
 };

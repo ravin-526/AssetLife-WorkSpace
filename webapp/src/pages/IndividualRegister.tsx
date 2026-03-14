@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 
 import api from "../services/api.ts";
+import OtpInput from "../components/OtpInput.tsx";
 import useUserStore, { UserData } from "../store/userStore.ts";
 import { LOGO } from "../constants/logo.ts";
 import { getTheme } from "../styles/theme";
@@ -306,20 +307,25 @@ const IndividualRegister = () => {
             />
 
             {otpSent ? (
-              <TextField
-                label="OTP"
-                placeholder="Enter OTP"
-                value={otp}
-                onChange={(event) => {
-                  setOtp(event.target.value);
-                  if (errors.otp) {
-                    setErrors((prev) => ({ ...prev, otp: undefined }));
-                  }
-                }}
-                error={Boolean(errors.otp)}
-                helperText={errors.otp}
-                fullWidth
-              />
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1 }}>OTP</Typography>
+                <OtpInput
+                  length={6}
+                  value={otp}
+                  onChange={(nextOtp) => {
+                    setOtp(nextOtp);
+                    if (errors.otp) {
+                      setErrors((prev) => ({ ...prev, otp: undefined }));
+                    }
+                  }}
+                  disabled={registering || verifyingOtp}
+                />
+                {errors.otp ? (
+                  <Typography variant="caption" color="error" sx={{ mt: 1, display: "block" }}>
+                    {errors.otp}
+                  </Typography>
+                ) : null}
+              </Box>
             ) : null}
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>

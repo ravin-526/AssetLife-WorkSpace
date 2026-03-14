@@ -7,11 +7,6 @@ import {
   CircularProgress,
   Paper,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   Typography,
 } from "@mui/material";
 
@@ -144,76 +139,59 @@ const EmailScans = () => {
   };
 
   return (
-    <Box>
-      <Typography variant="h4" sx={{ mb: 2 }}>Email Scans</Typography>
+    <Box className="grid">
+      <Box className="col-12">
+        <Typography variant="h4" sx={{ mb: 2 }}>Email Scans</Typography>
+      </Box>
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+        <Box className="col-12" sx={{ display: "flex", justifyContent: "center", py: 4 }}>
           <CircularProgress size={28} />
         </Box>
       ) : null}
 
-      <Paper sx={{ p: { xs: 2, md: 3 }, overflowX: "auto" }}>
+      <Box className="col-12">
+      <Paper sx={{ p: { xs: 2, md: 3 } }}>
         {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
         {message ? <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert> : null}
 
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Sender</TableCell>
-              <TableCell>Subject</TableCell>
-              <TableCell>Date</TableCell>
-              <TableCell>Scan Status</TableCell>
-              <TableCell>Detected Items</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {scans.map((scan) => (
-              <TableRow key={scan.id}>
-                <TableCell>{scan.sender || "-"}</TableCell>
-                <TableCell>{scan.subject || "-"}</TableCell>
-                <TableCell>{scan.email_date ? new Date(scan.email_date).toLocaleDateString() : "-"}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={scan.scan_status}
-                    color={statusColorMap[scan.scan_status] ?? "default"}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>{scan.detected_items_count}</TableCell>
-                <TableCell>{scan.error_message ? scan.error_message : "-"}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="grid">
+          {scans.map((scan) => (
+            <div key={scan.id} className="col-12 md:col-6 lg:col-4">
+              <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
+                <Stack spacing={0.75}>
+                  <Typography variant="body2"><strong>Sender:</strong> {scan.sender || "-"}</Typography>
+                  <Typography variant="body2"><strong>Subject:</strong> {scan.subject || "-"}</Typography>
+                  <Typography variant="body2"><strong>Date:</strong> {scan.email_date ? new Date(scan.email_date).toLocaleDateString() : "-"}</Typography>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2"><strong>Status:</strong></Typography>
+                    <Chip label={scan.scan_status} color={statusColorMap[scan.scan_status] ?? "default"} size="small" />
+                  </Stack>
+                  <Typography variant="body2"><strong>Detected Items:</strong> {scan.detected_items_count}</Typography>
+                  <Typography variant="body2"><strong>Message:</strong> {scan.error_message ? scan.error_message : "-"}</Typography>
+                </Stack>
+              </Paper>
+            </div>
+          ))}
+        </div>
       </Paper>
+      </Box>
 
-      <Paper sx={{ p: { xs: 2, md: 3 }, overflowX: "auto", mt: 2 }}>
+      <Box className="col-12">
+      <Paper sx={{ p: { xs: 2, md: 3 }, mt: 2 }}>
         <Typography variant="h6" sx={{ mb: 2 }}>Asset Suggestions</Typography>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Sender</TableCell>
-              <TableCell>Subject</TableCell>
-              <TableCell>Date</TableCell>
-              <TableCell>Product</TableCell>
-              <TableCell>Vendor</TableCell>
-              <TableCell>Price</TableCell>
-              <TableCell>Attachment</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {suggestions.map((suggestion) => (
-              <TableRow key={suggestion.id}>
-                <TableCell>{suggestion.sender || "-"}</TableCell>
-                <TableCell>{suggestion.subject || "-"}</TableCell>
-                <TableCell>{suggestion.email_date ? new Date(suggestion.email_date).toLocaleDateString() : "-"}</TableCell>
-                <TableCell>{suggestion.product_name || "-"}</TableCell>
-                <TableCell>{suggestion.vendor || "-"}</TableCell>
-                <TableCell>{suggestion.price ?? "-"}</TableCell>
-                <TableCell>{suggestion.attachment_filename || "-"}</TableCell>
-                <TableCell>
+
+        <div className="grid">
+          {suggestions.map((suggestion) => (
+            <div key={suggestion.id} className="col-12 md:col-6 lg:col-4">
+              <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
+                <Stack spacing={0.75}>
+                  <Typography variant="body2"><strong>Sender:</strong> {suggestion.sender || "-"}</Typography>
+                  <Typography variant="body2"><strong>Subject:</strong> {suggestion.subject || "-"}</Typography>
+                  <Typography variant="body2"><strong>Date:</strong> {suggestion.email_date ? new Date(suggestion.email_date).toLocaleDateString() : "-"}</Typography>
+                  <Typography variant="body2"><strong>Product:</strong> {suggestion.product_name || "-"}</Typography>
+                  <Typography variant="body2"><strong>Vendor:</strong> {suggestion.vendor || "-"}</Typography>
+                  <Typography variant="body2"><strong>Price:</strong> {suggestion.price ?? "-"}</Typography>
+                  <Typography variant="body2"><strong>Attachment:</strong> {suggestion.attachment_filename || "-"}</Typography>
                   <Stack direction="row" spacing={1}>
                     <Button
                       size="small"
@@ -227,12 +205,13 @@ const EmailScans = () => {
                       Discard
                     </Button>
                   </Stack>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </Stack>
+              </Paper>
+            </div>
+          ))}
+        </div>
       </Paper>
+      </Box>
 
       <AssetPreviewModal
         open={Boolean(selectedSuggestion)}

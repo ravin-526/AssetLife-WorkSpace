@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 
+import OtpInput from "../../components/OtpInput.tsx";
 import api from "../../services/api";
 import theme from "../../styles/theme";
 import useUserStore from "../../store/userStore";
@@ -156,7 +157,6 @@ const Login = () => {
         ) : null}
 
         <label
-          htmlFor="otp"
           style={{
             display: "block",
             marginTop: theme.spacing.md,
@@ -167,26 +167,11 @@ const Login = () => {
         >
           OTP
         </label>
-        <input
-          id="otp"
-          name="otp"
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
+        <OtpInput
+          length={6}
           value={otp}
-          onChange={(event) => setOtp(event.target.value)}
-          aria-invalid={Boolean(errors.otp)}
-          aria-describedby={errors.otp ? "otp-error" : undefined}
-          style={{
-            width: "100%",
-            height: theme.buttons.height,
-            borderRadius: theme.buttons.radius,
-            border: `1px solid ${errors.otp ? theme.colors.error : theme.colors.border}`,
-            padding: `0 ${theme.spacing.md}`,
-            marginBottom: theme.spacing.xs,
-            boxSizing: "border-box",
-            fontSize: theme.fonts.bodySize,
-          }}
+          onChange={setOtp}
+          disabled={isLoading}
         />
         {errors.otp ? (
           <p id="otp-error" style={{ margin: 0, color: theme.colors.error }}>

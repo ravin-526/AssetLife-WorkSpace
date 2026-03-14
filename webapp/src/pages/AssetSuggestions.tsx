@@ -6,11 +6,6 @@ import {
   CircularProgress,
   Paper,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   Typography,
 } from "@mui/material";
 
@@ -121,42 +116,33 @@ const AssetSuggestions = () => {
   };
 
   return (
-    <Box>
-      <Typography variant="h4" sx={{ mb: 2 }}>Asset Suggestions</Typography>
+    <Box className="grid">
+      <Box className="col-12">
+        <Typography variant="h4" sx={{ mb: 2 }}>Asset Suggestions</Typography>
+      </Box>
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+        <Box className="col-12" sx={{ display: "flex", justifyContent: "center", py: 4 }}>
           <CircularProgress size={28} />
         </Box>
       ) : null}
-      <Paper sx={{ p: { xs: 2, md: 3 }, overflowX: "auto" }}>
+      <Box className="col-12">
+      <Paper sx={{ p: { xs: 2, md: 3 } }}>
         <Stack spacing={2}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {message ? <Alert severity="success">{message}</Alert> : null}
 
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Product Name</TableCell>
-                <TableCell>Vendor</TableCell>
-                <TableCell>Price</TableCell>
-                <TableCell>Purchase Date</TableCell>
-                <TableCell>Attachment</TableCell>
-                <TableCell>Quantity</TableCell>
-                <TableCell>Source</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {suggestions.map((suggestion) => (
-                <TableRow key={suggestion.id}>
-                  <TableCell>{suggestion.product_name}</TableCell>
-                  <TableCell>{suggestion.vendor || "-"}</TableCell>
-                  <TableCell>{suggestion.price ?? "-"}</TableCell>
-                  <TableCell>{suggestion.purchase_date ? new Date(suggestion.purchase_date).toLocaleDateString() : "-"}</TableCell>
-                  <TableCell>{suggestion.attachment_filename || "-"}</TableCell>
-                  <TableCell>{suggestion.quantity}</TableCell>
-                  <TableCell>{suggestion.source}</TableCell>
-                  <TableCell>
+          <div className="grid">
+            {suggestions.map((suggestion) => (
+              <div key={suggestion.id} className="col-12 md:col-6 lg:col-4">
+                <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
+                  <Stack spacing={0.75}>
+                    <Typography variant="body2"><strong>Product Name:</strong> {suggestion.product_name}</Typography>
+                    <Typography variant="body2"><strong>Vendor:</strong> {suggestion.vendor || "-"}</Typography>
+                    <Typography variant="body2"><strong>Price:</strong> {suggestion.price ?? "-"}</Typography>
+                    <Typography variant="body2"><strong>Purchase Date:</strong> {suggestion.purchase_date ? new Date(suggestion.purchase_date).toLocaleDateString() : "-"}</Typography>
+                    <Typography variant="body2"><strong>Attachment:</strong> {suggestion.attachment_filename || "-"}</Typography>
+                    <Typography variant="body2"><strong>Quantity:</strong> {suggestion.quantity}</Typography>
+                    <Typography variant="body2"><strong>Source:</strong> {suggestion.source}</Typography>
                     <Stack direction="row" spacing={1}>
                       <Button size="small" variant="contained" onClick={() => handleConfirm(suggestion)}>Confirm</Button>
                       <Button size="small" variant="outlined" onClick={() => handleConfirm(suggestion)}>
@@ -164,13 +150,14 @@ const AssetSuggestions = () => {
                       </Button>
                       <Button size="small" color="error" variant="text" onClick={() => handleDiscard(suggestion.id)}>Discard</Button>
                     </Stack>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </Stack>
+                </Paper>
+              </div>
+            ))}
+          </div>
         </Stack>
       </Paper>
+      </Box>
 
       <AssetPreviewModal
         open={Boolean(selectedSuggestion)}
