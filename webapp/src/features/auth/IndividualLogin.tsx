@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import OtpInput from "../../components/OtpInput.tsx";
 import api from "../../services/api";
 import useUserStore, { UserData } from "../../store/userStore";
 import theme from "../../styles/theme";
@@ -171,7 +172,6 @@ const IndividualLogin = () => {
 
         <div style={{ marginBottom: theme.spacing.md }}>
           <label
-            htmlFor="otp"
             style={{
               display: "block",
               marginBottom: theme.spacing.xs,
@@ -181,14 +181,11 @@ const IndividualLogin = () => {
           >
             OTP
           </label>
-          <input
-            id="otp"
-            name="otp"
-            type="text"
+          <OtpInput
+            length={6}
             value={form.otp}
-            onChange={(event) => setForm((prev) => ({ ...prev, otp: event.target.value }))}
-            style={inputStyle(Boolean(errors.otp))}
-            aria-invalid={Boolean(errors.otp)}
+            onChange={(nextOtp) => setForm((prev) => ({ ...prev, otp: nextOtp }))}
+            disabled={isLoading}
           />
           {errors.otp ? (
             <p style={{ color: theme.colors.error, margin: `${theme.spacing.xs} 0 0` }}>{errors.otp}</p>

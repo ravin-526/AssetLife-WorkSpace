@@ -32,7 +32,7 @@ export type EmailScan = {
   sender: string;
   subject: string;
   email_date?: string;
-  scan_status: "processing" | "completed" | "failed" | "skipped_duplicate";
+  scan_status: "processing" | "completed" | "failed" | "skipped_duplicate" | "skipped_sender_filter" | "skipped_vendor" | "skipped_non_invoice";
   detected_items_count: number;
   source: string;
   error_message?: string;
@@ -56,6 +56,7 @@ export type AssetSuggestion = {
   email_message_id: string;
   attachment_filename?: string;
   attachment_mime_type?: string;
+  already_added: boolean;
   created_at: string;
 };
 

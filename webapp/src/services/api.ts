@@ -15,7 +15,7 @@ type ApiErrorBody = {
 };
 
 const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-export const API_BASE_URL = runtimeEnv?.REACT_APP_API_BASE_URL ?? "http://192.168.0.11:8000";
+export const API_BASE_URL = runtimeEnv?.REACT_APP_API_BASE_URL ?? "http://localhost:8000";
 
 export const getAuthorizationHeader = (): Record<string, string> => {
   const token = useUserStore.getState().token ?? localStorage.getItem("jwt_token");

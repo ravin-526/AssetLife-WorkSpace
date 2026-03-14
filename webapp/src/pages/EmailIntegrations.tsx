@@ -95,27 +95,34 @@ const EmailIntegrations = () => {
   };
 
   return (
-    <Box>
-      <Typography variant="h4" sx={{ mb: 2 }}>Email Integrations</Typography>
-      <Paper sx={{ p: { xs: 2, md: 3 } }}>
-        <Stack spacing={2}>
+    <Box className="grid">
+      <Box className="col-12">
+        <Typography variant="h4" sx={{ mb: 2 }}>Email Integrations</Typography>
+      </Box>
+      <Box className="col-12 lg:col-10 xl:col-8">
+        <Paper sx={{ p: { xs: 2, md: 3 } }}>
+          <Stack spacing={2}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {message ? <Alert severity="success">{message}</Alert> : null}
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }}>
-            <Typography variant="body1">Gmail</Typography>
-            <Chip label={connected ? "Connected" : "Not Connected"} color={connected ? "success" : "default"} />
-          </Stack>
-
-          {emailAddress ? (
-            <Typography variant="body2" color="text.secondary">Connected email: {emailAddress}</Typography>
-          ) : null}
-
-          {lastSyncAt ? (
-            <Typography variant="body2" color="text.secondary">
-              Last sync: {new Date(lastSyncAt).toLocaleString()}
-            </Typography>
-          ) : null}
+            <div className="grid align-items-center">
+              <div className="col-12 md:col-6">
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body1">Gmail</Typography>
+                  <Chip label={connected ? "Connected" : "Not Connected"} color={connected ? "success" : "default"} />
+                </Stack>
+              </div>
+              <div className="col-12 md:col-6">
+                {emailAddress ? (
+                  <Typography variant="body2" color="text.secondary">Connected email: {emailAddress}</Typography>
+                ) : null}
+                {lastSyncAt ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Last sync: {new Date(lastSyncAt).toLocaleString()}
+                  </Typography>
+                ) : null}
+              </div>
+            </div>
 
           {syncing ? (
             <Paper variant="outlined" sx={{ p: 2, bgcolor: "action.hover" }}>
@@ -133,33 +140,42 @@ const EmailIntegrations = () => {
             </Paper>
           ) : null}
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "center" }}>
-            <TextField
-              select
-              label="Scan Emails From"
-              value={scanDays}
-              onChange={(event) => setScanDays(Number(event.target.value))}
-              size="small"
-              sx={{ minWidth: 220 }}
-              disabled={loading || syncing}
-            >
-              <MenuItem value={7}>7 days</MenuItem>
-              <MenuItem value={10}>10 days</MenuItem>
-              <MenuItem value={30}>30 days</MenuItem>
-              <MenuItem value={60}>60 days</MenuItem>
-              <MenuItem value={90}>90 days</MenuItem>
-            </TextField>
-          </Stack>
+            <div className="grid">
+              <div className="col-12 md:col-6 lg:col-4">
+                <TextField
+                  select
+                  label="Scan Emails From"
+                  value={scanDays}
+                  onChange={(event) => setScanDays(Number(event.target.value))}
+                  size="small"
+                  fullWidth
+                  disabled={loading || syncing}
+                >
+                  <MenuItem value={7}>7 days</MenuItem>
+                  <MenuItem value={10}>10 days</MenuItem>
+                  <MenuItem value={30}>30 days</MenuItem>
+                  <MenuItem value={60}>60 days</MenuItem>
+                  <MenuItem value={90}>90 days</MenuItem>
+                </TextField>
+              </div>
+            </div>
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <Button variant="contained" onClick={handleConnect} disabled={connected || loading || syncing}>Connect Gmail</Button>
-            <Button variant="outlined" onClick={handleDisconnect} disabled={!connected || loading || syncing}>Disconnect Gmail</Button>
-            <Button variant="contained" onClick={handleSync} disabled={!connected || loading || syncing}>
-              {syncing ? "Scanning..." : "Sync Emails"}
-            </Button>
+            <div className="grid">
+              <div className="col-12 md:col-4">
+                <Button variant="contained" onClick={handleConnect} disabled={connected || loading || syncing} fullWidth>Connect Gmail</Button>
+              </div>
+              <div className="col-12 md:col-4">
+                <Button variant="outlined" onClick={handleDisconnect} disabled={!connected || loading || syncing} fullWidth>Disconnect Gmail</Button>
+              </div>
+              <div className="col-12 md:col-4">
+                <Button variant="contained" onClick={handleSync} disabled={!connected || loading || syncing} fullWidth>
+                  {syncing ? "Scanning..." : "Sync Emails"}
+                </Button>
+              </div>
+            </div>
           </Stack>
-        </Stack>
-      </Paper>
+        </Paper>
+      </Box>
     </Box>
   );
 };

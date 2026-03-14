@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import AdminLayout from "./components/AdminLayout.tsx";
 import PrivateRoute from "./components/PrivateRoute.tsx";
+import AddAsset from "./pages/AddAsset.tsx";
 import AssetSuggestions from "./pages/AssetSuggestions.tsx";
 import Assets from "./pages/Assets.tsx";
 import AssetView from "./pages/AssetView.tsx";
@@ -28,6 +29,7 @@ const getPageTitle = (pathname: string) => {
     "/emails": "Email Scans",
     "/assets/suggestions": "Asset Suggestions",
     "/assets": "Assets",
+    "/assets/add": "Add Asset",
     "/assets/view": "Asset View",
     "/reports": "Reports",
     "/users": "Users",
@@ -79,6 +81,7 @@ const App = () => {
             <Route path="/emails" element={<EmailScans />} />
             <Route path="/assets/suggestions" element={<AssetSuggestions />} />
             <Route path="/assets" element={<Assets />} />
+            <Route path="/assets/add" element={<AddAsset />} />
             <Route path="/assets/:assetId" element={<AssetView />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/users" element={<Users />} />
