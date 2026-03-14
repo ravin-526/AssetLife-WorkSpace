@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import {
   AssetSuggestion,
   EmailScan,
@@ -38,6 +39,9 @@ const EmailScans = () => {
   const [parsingMessage, setParsingMessage] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  useAutoDismissMessage(message, setMessage, { delay: 3000 });
+  useAutoDismissMessage(error, setError, { delay: 4000 });
 
   const loadData = async () => {
     const [scanResponse, suggestionResponse] = await Promise.all([getEmailScans(), getAssetSuggestions()]);
@@ -98,6 +102,7 @@ const EmailScans = () => {
     purchase_date?: string;
     warranty?: string;
     category?: string;
+    subcategory?: string;
     location?: string;
   }) => {
     if (!selectedSuggestion) {
@@ -110,6 +115,8 @@ const EmailScans = () => {
       await createAsset({
         name: payload.product_name ?? selectedSuggestion.product_name,
         brand: payload.brand ?? selectedSuggestion.brand,
+        category: payload.category ?? "Other",
+        subcategory: payload.subcategory ?? "Custom Asset",
         vendor: payload.vendor ?? selectedSuggestion.vendor,
         purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
         price: payload.price ?? selectedSuggestion.price,

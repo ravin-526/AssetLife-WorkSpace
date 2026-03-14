@@ -14,10 +14,13 @@ import EmailScans from "./pages/EmailScans.tsx";
 import IndividualLogin from "./pages/IndividualLogin.tsx";
 import IndividualRegister from "./pages/IndividualRegister.tsx";
 import Profile from "./pages/Profile.tsx";
+import Reminders from "./pages/Reminders.tsx";
 import Reports from "./pages/Reports.tsx";
 import Settings from "./pages/Settings.tsx";
 import Users from "./pages/Users.tsx";
 import { getTheme } from "./styles/theme";
+
+const THEME_MODE_STORAGE_KEY = "assetlife-theme-mode";
 
 const getPageTitle = (pathname: string) => {
   const titleMap: Record<string, string> = {
@@ -31,6 +34,7 @@ const getPageTitle = (pathname: string) => {
     "/assets": "Assets",
     "/assets/add": "Add Asset",
     "/assets/view": "Asset View",
+    "/reminders": "Reminders",
     "/reports": "Reports",
     "/users": "Users",
     "/profile": "Profile",
@@ -51,8 +55,15 @@ const DocumentTitleManager = () => {
 };
 
 const App = () => {
-  const [mode, setMode] = useState<"light" | "dark">("light");
+  const [mode, setMode] = useState<"light" | "dark">(() => {
+    const storedMode = localStorage.getItem(THEME_MODE_STORAGE_KEY);
+    return storedMode === "dark" ? "dark" : "light";
+  });
   const theme = useMemo(() => getTheme(mode), [mode]);
+
+  useEffect(() => {
+    localStorage.setItem(THEME_MODE_STORAGE_KEY, mode);
+  }, [mode]);
 
   const handleToggleTheme = () => {
     setMode((prev) => (prev === "light" ? "dark" : "light"));
@@ -83,6 +94,7 @@ const App = () => {
             <Route path="/assets" element={<Assets />} />
             <Route path="/assets/add" element={<AddAsset />} />
             <Route path="/assets/:assetId" element={<AssetView />} />
+            <Route path="/reminders" element={<Reminders />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/users" element={<Users />} />
             <Route path="/profile" element={<Profile />} />

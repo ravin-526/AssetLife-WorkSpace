@@ -6,6 +6,11 @@ type ApiErrorBody = {
   detail?: string | {
     status?: string;
     message?: string;
+    errors?: Array<{
+      loc?: Array<string | number>;
+      msg?: string;
+      type?: string;
+    }>;
   };
   status?: string;
   message?: string;
@@ -16,9 +21,12 @@ type ApiErrorBody = {
 
 const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 export const API_BASE_URL = runtimeEnv?.REACT_APP_API_BASE_URL ?? "http://localhost:8000";
+const ACCESS_TOKEN_KEY = "access_token";
+const LEGACY_TOKEN_KEY = "jwt_token";
 
 export const getAuthorizationHeader = (): Record<string, string> => {
-  const token = useUserStore.getState().token ?? localStorage.getItem("jwt_token");
+  const tokenFromStorage = localStorage.getItem(ACCESS_TOKEN_KEY) ?? localStorage.getItem(LEGACY_TOKEN_KEY);
+  const token = useUserStore.getState().token ?? tokenFromStorage;
   if (!token) {
     return {};
   }
@@ -29,7 +37,10 @@ const extractErrorMessage = (error: AxiosError<ApiErrorBody>): string => {
   const status = error.response?.status;
   const detail = error.response?.data?.detail;
   const detailMessage = typeof detail === "string" ? detail : detail?.message;
+  const detailErrors = typeof detail === "object" ? detail?.errors : undefined;
+  const firstDetailError = detailErrors && detailErrors.length > 0 ? detailErrors[0] : undefined;
   const message =
+    firstDetailError?.msg ||
     detailMessage ||
     error.response?.data?.message ||
     error.response?.data?.error?.message;

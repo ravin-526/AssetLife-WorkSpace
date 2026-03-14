@@ -3,12 +3,15 @@ import { Alert, Box, CircularProgress, Divider, Paper, Typography } from "@mui/m
 import { useParams } from "react-router-dom";
 
 import { Asset, getAssetById } from "../services/gmail.ts";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 
 const AssetView = () => {
   const { assetId } = useParams<{ assetId: string }>();
   const [asset, setAsset] = useState<Asset | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useAutoDismissMessage(error, setError, { delay: 4000 });
 
   useEffect(() => {
     const run = async () => {

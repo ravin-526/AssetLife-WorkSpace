@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
 
 import { connectGmail, disconnectGmail, getGmailStatus, syncEmails } from "../services/gmail.ts";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 
 const EmailIntegrations = () => {
   const [connected, setConnected] = useState(false);
@@ -9,6 +10,9 @@ const EmailIntegrations = () => {
   const [lastSyncAt, setLastSyncAt] = useState<string>("");
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
+
+  useAutoDismissMessage(message, setMessage, { delay: 3000 });
+  useAutoDismissMessage(error, setError, { delay: 4000 });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [scanDays, setScanDays] = useState(10);

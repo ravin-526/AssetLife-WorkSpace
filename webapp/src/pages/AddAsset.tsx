@@ -3,11 +3,13 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Fade,
   LinearProgress,
   MenuItem,
   Paper,
@@ -15,22 +17,53 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
+import MailOutlineIcon from "@mui/icons-material/MailOutline";
+import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+import { useNavigate } from "react-router-dom";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import {
+  AssetLifecyclePayload,
   AssetSuggestion,
+  UploadedAssetDocument,
   connectMailbox,
   createAsset,
+  deleteAssetDocument,
   disconnectMailbox,
+  getAssetDocuments,
   getAssetSuggestions,
   getMailboxStatus,
   parseSuggestionAttachment,
   syncMailboxEmails,
+  uploadAssetDocuments,
 } from "../services/gmail.ts";
 
 type AddAssetMethod = "email_sync" | "excel_upload" | "barcode_qr" | "manual_entry";
+type ActivityStepState = "completed" | "in_progress" | "pending";
+
+type ScanSummary = {
+  emailsScanned: number;
+  invoiceEmails: number;
+  assetsDetected: number;
+};
+
+const SYNC_ACTIVITY_STEPS = [
+  "Connecting to mailbox",
+  "Authenticating mailbox credentials",
+  "Searching for invoice related emails",
+  "Fetching email attachments",
+  "Processing attachments",
+  "Extracting invoice details",
+  "Identifying asset information",
+  "Generating asset suggestions",
+  "Finalizing results",
+];
 
 const AddAsset = () => {
+  const navigate = useNavigate();
   const [suggestions, setSuggestions] = useState<AssetSuggestion[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = useState<AssetSuggestion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,6 +82,18 @@ const AddAsset = () => {
   const [mailboxEmailInputError, setMailboxEmailInputError] = useState("");
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
   const [parsingMessage, setParsingMessage] = useState("");
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [uploadedDocuments, setUploadedDocuments] = useState<UploadedAssetDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsActionLoading, setDocumentsActionLoading] = useState<Record<string, boolean>>({});
+  const [nextSuggestionPromptOpen, setNextSuggestionPromptOpen] = useState(false);
+  const [nextSuggestionLoading, setNextSuggestionLoading] = useState(false);
+  const [showActivityPanel, setShowActivityPanel] = useState(false);
+  const [activityStepStates, setActivityStepStates] = useState<ActivityStepState[]>(
+    SYNC_ACTIVITY_STEPS.map(() => "pending")
+  );
+  const [processingDots, setProcessingDots] = useState(1);
+  const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [selectedMethod, setSelectedMethod] = useState<AddAssetMethod>("email_sync");
@@ -61,6 +106,9 @@ const AddAsset = () => {
     price: "",
     warranty: "",
   });
+
+  useAutoDismissMessage(message, setMessage, { delay: 3000 });
+  useAutoDismissMessage(error, setError, { delay: 4000 });
 
   const setActionLoading = (action: string, isLoading: boolean) => {
     setLoadingActions((prev) => ({ ...prev, [action]: isLoading }));
@@ -108,6 +156,21 @@ const AddAsset = () => {
 
     void run();
   }, []);
+
+  useEffect(() => {
+    if (!isActionLoading("syncMailbox")) {
+      setProcessingDots(1);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setProcessingDots((prev) => (prev >= 3 ? 1 : prev + 1));
+    }, 450);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loadingActions]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -186,6 +249,31 @@ const AddAsset = () => {
 
   const handleRunMailboxSync = async () => {
     setActionLoading("syncMailbox", true);
+    setShowActivityPanel(true);
+    setScanSummary(null);
+
+    const updateActivityState = (activeIndex: number) => {
+      setActivityStepStates(
+        SYNC_ACTIVITY_STEPS.map((_, index) => {
+          if (index < activeIndex) {
+            return "completed";
+          }
+          if (index === activeIndex) {
+            return "in_progress";
+          }
+          return "pending";
+        })
+      );
+    };
+
+    let activeStepIndex = 0;
+    updateActivityState(activeStepIndex);
+
+    const stepTimer = window.setInterval(() => {
+      activeStepIndex = Math.min(activeStepIndex + 1, SYNC_ACTIVITY_STEPS.length - 1);
+      updateActivityState(activeStepIndex);
+    }, 900);
+
     try {
       setError("");
       setMessage("");
@@ -210,13 +298,30 @@ const AddAsset = () => {
       const senderEmails = parseCsvInput(senderEmailsInput);
 
       const response = await syncMailboxEmails(effectiveScanDays, 200, subjectKeywords, senderEmails);
-      await loadSuggestions();
-      setMessage(
-        `Sync completed. Scanned ${response.scanned} emails and created ${response.created_suggestions} temporary suggestions.`
-      );
+
+      window.clearInterval(stepTimer);
+      setActivityStepStates(SYNC_ACTIVITY_STEPS.map(() => "completed"));
+
+      const emailsScanned = response.emails_scanned ?? response.scanned;
+      const invoiceEmails = response.invoice_emails ?? response.purchase_emails_detected;
+      const assetsDetected = response.assets_detected ?? response.created_suggestions;
+
+      setScanSummary({ emailsScanned, invoiceEmails, assetsDetected });
+
+      if (response.suggestions) {
+        setSuggestions(response.suggestions);
+      } else {
+        await loadSuggestions();
+      }
+
+      setMessage("");
     } catch (requestError: unknown) {
+      window.clearInterval(stepTimer);
+      setShowActivityPanel(false);
+      setActivityStepStates(SYNC_ACTIVITY_STEPS.map(() => "pending"));
       setError(requestError instanceof Error ? requestError.message : "Failed to sync mailbox");
     } finally {
+      window.clearInterval(stepTimer);
       setActionLoading("syncMailbox", false);
     }
   };
@@ -230,6 +335,8 @@ const AddAsset = () => {
     try {
       setError("");
       setParsingMessage("");
+      setSelectedAssetId(null);
+      setUploadedDocuments([]);
       setParsingSuggestionId(suggestion.id);
       const parsed = await parseSuggestionAttachment(suggestion.id);
 
@@ -254,15 +361,65 @@ const AddAsset = () => {
     }
   };
 
+  const withDocumentActionLoading = (key: string, isLoading: boolean) => {
+    setDocumentsActionLoading((prev) => ({ ...prev, [key]: isLoading }));
+  };
+
+  const isDocumentActionLoading = (key: string) => Boolean(documentsActionLoading[key]);
+
+  const loadUploadedDocuments = async (assetId: string) => {
+    setDocumentsLoading(true);
+    try {
+      const docs = await getAssetDocuments(assetId);
+      setUploadedDocuments(docs);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  };
+
+  const handleViewUploadedDocument = (document: UploadedAssetDocument) => {
+    const actionKey = `view-${document.document_id}`;
+    withDocumentActionLoading(actionKey, true);
+    try {
+      setError("");
+      window.open(document.file_url, "_blank", "noopener,noreferrer");
+    } finally {
+      withDocumentActionLoading(actionKey, false);
+    }
+  };
+
+  const handleDeleteUploadedDocument = async (documentId: string) => {
+    if (!selectedAssetId) {
+      setError("Asset not available for document deletion.");
+      return;
+    }
+
+    const actionKey = `delete-${documentId}`;
+    withDocumentActionLoading(actionKey, true);
+    try {
+      setError("");
+      await deleteAssetDocument(selectedAssetId, documentId);
+      setUploadedDocuments((prev) => prev.filter((item) => item.document_id !== documentId));
+      setMessage("Uploaded document deleted successfully.");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to delete uploaded document");
+    } finally {
+      withDocumentActionLoading(actionKey, false);
+    }
+  };
+
   const handleSaveAsset = async (payload: {
     product_name?: string;
     brand?: string;
     vendor?: string;
     price?: number;
     purchase_date?: string;
-    warranty?: string;
     category?: string;
-    location?: string;
+    subcategory?: string;
+    serial_number?: string;
+    model_number?: string;
+    lifecycle_info?: AssetLifecyclePayload;
+    supporting_documents?: File[];
   }) => {
     if (!selectedSuggestion) {
       return;
@@ -271,15 +428,29 @@ const AddAsset = () => {
     try {
       setSaveLoading(true);
       setError("");
-      await createAsset({
+      const createdAsset = await createAsset({
         name: payload.product_name ?? selectedSuggestion.product_name,
         brand: payload.brand ?? selectedSuggestion.brand,
+        category: payload.category ?? "Other",
+        subcategory: payload.subcategory ?? "Custom Asset",
         vendor: payload.vendor ?? selectedSuggestion.vendor,
         purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
         price: payload.price ?? selectedSuggestion.price,
+        serial_number: payload.serial_number,
+        model_number: payload.model_number,
+        lifecycle_info: payload.lifecycle_info,
         source: "gmail",
         suggestion_id: selectedSuggestion.id,
       });
+
+      setSelectedAssetId(createdAsset.id);
+
+      if (payload.supporting_documents && payload.supporting_documents.length > 0) {
+        const uploadResponse = await uploadAssetDocuments(createdAsset.id, payload.supporting_documents);
+        setUploadedDocuments(uploadResponse.uploaded);
+      } else {
+        await loadUploadedDocuments(createdAsset.id);
+      }
 
       setSuggestions((prev) =>
         prev.map((item) =>
@@ -291,14 +462,49 @@ const AddAsset = () => {
             : item
         )
       );
-      setSelectedSuggestion(null);
-      setParsingMessage("");
-      setMessage("Suggestion added. Asset saved successfully.");
+      setMessage("Asset added successfully");
+      setNextSuggestionPromptOpen(true);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Failed to save asset");
     } finally {
       setSaveLoading(false);
     }
+  };
+
+  const handleViewNextSuggestion = async () => {
+    setNextSuggestionLoading(true);
+    try {
+      setError("");
+      const latestSuggestions = await getAssetSuggestions();
+      setSuggestions(latestSuggestions);
+      const nextSuggestion = latestSuggestions.find((item) => !item.already_added);
+
+      if (!nextSuggestion) {
+        setNextSuggestionPromptOpen(false);
+        setSelectedSuggestion(null);
+        setSelectedAssetId(null);
+        setUploadedDocuments([]);
+        navigate("/assets");
+        return;
+      }
+
+      setNextSuggestionPromptOpen(false);
+      await handlePrepareSave(nextSuggestion);
+      setMessage("Loaded next asset suggestion.");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to load next asset suggestion");
+    } finally {
+      setNextSuggestionLoading(false);
+    }
+  };
+
+  const handleFinishAssetFlow = () => {
+    setNextSuggestionPromptOpen(false);
+    setSelectedSuggestion(null);
+    setSelectedAssetId(null);
+    setUploadedDocuments([]);
+    setParsingMessage("");
+    navigate("/assets");
   };
 
   const formatSuggestionPrice = (price?: number) => {
@@ -346,8 +552,16 @@ const AddAsset = () => {
 
       <Box className="col-12">
         <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
-          <div className="grid align-items-end">
-            <div className="col-12 md:col-6 lg:col-4">
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: { xs: "stretch", md: "center" },
+              justifyContent: "flex-start",
+              gap: 1.5,
+              flexWrap: "wrap",
+            }}
+          >
+            <Box sx={{ width: { xs: "100%", md: 320 }, maxWidth: "100%" }}>
               <TextField
                 select
                 size="small"
@@ -362,8 +576,59 @@ const AddAsset = () => {
                 <MenuItem value="barcode_qr">Barcode / QR Code Scan</MenuItem>
                 <MenuItem value="manual_entry">Manual Entry</MenuItem>
               </TextField>
-            </div>
-          </div>
+            </Box>
+
+            <Fade in={selectedMethod === "email_sync"} timeout={180} mountOnEnter unmountOnExit>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: { xs: "space-between", md: "flex-end" },
+                  gap: 1.25,
+                  minWidth: { xs: "100%", md: "auto" },
+                  ml: { xs: 0, md: "auto" },
+                  flexWrap: "wrap",
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: "50%",
+                      bgcolor: mailboxConnected ? "success.main" : "error.main",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <Typography variant="body2" fontWeight={500}>
+                    {mailboxConnected ? "Connected to Gmail" : "Not Connected"}
+                  </Typography>
+                </Box>
+
+                <Button
+                  variant="outlined"
+                  color={mailboxConnected ? "error" : "primary"}
+                  onClick={() => {
+                    if (mailboxConnected) {
+                      void handleDisconnectMailbox();
+                    } else {
+                      void handleConnectClick();
+                    }
+                  }}
+                  disabled={isActionLoading("connectMailbox") || isActionLoading("disconnectMailbox")}
+                  sx={{ height: standardControlHeight }}
+                >
+                  {isActionLoading("connectMailbox")
+                    ? "Connecting..."
+                    : isActionLoading("disconnectMailbox")
+                      ? "Disconnecting..."
+                      : mailboxConnected
+                        ? "Disconnect"
+                        : "Connect"}
+                </Button>
+              </Box>
+            </Fade>
+          </Box>
         </Paper>
       </Box>
 
@@ -380,62 +645,6 @@ const AddAsset = () => {
             <>
               {selectedMethod === "email_sync" ? (
                 <Stack spacing={3} sx={{ minHeight: 0, overflow: "hidden" }}>
-                  <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
-                    <Stack spacing={2}>
-                      <Typography variant="h6">Mailbox Connection</Typography>
-                      <div className="grid align-items-center">
-                        <div className="col-12 lg:col-9">
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                            <Box
-                              sx={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: "50%",
-                                bgcolor: mailboxConnected ? "success.main" : "grey.500",
-                                flexShrink: 0,
-                              }}
-                            />
-                            <Typography variant="body1" fontWeight={500}>
-                              {mailboxConnected ? "Connected" : "Not Connected"}
-                            </Typography>
-                          </Box>
-                        </div>
-                        <div className="col-12 lg:col-3 flex lg:justify-content-end">
-                          <Button
-                            variant="outlined"
-                            color={mailboxConnected ? "error" : "primary"}
-                            onClick={() => {
-                              if (mailboxConnected) {
-                                void handleDisconnectMailbox();
-                              } else {
-                                void handleConnectClick();
-                              }
-                            }}
-                            disabled={isActionLoading("connectMailbox") || isActionLoading("disconnectMailbox")}
-                            sx={{ height: standardControlHeight }}
-                          >
-                            {isActionLoading("connectMailbox")
-                              ? "Connecting..."
-                              : isActionLoading("disconnectMailbox")
-                                ? "Disconnecting..."
-                                : mailboxConnected
-                                  ? "Disconnect"
-                                  : "Connect"}
-                          </Button>
-                        </div>
-                      </div>
-                      {mailboxConnected && mailboxEmail ? (
-                        <Typography variant="body2" color="text.secondary">
-                          Using configured mailbox: {mailboxEmail}
-                        </Typography>
-                      ) : (
-                        <Alert severity="warning">
-                          No configured mailbox email found in profile. Connect mailbox once and it will be saved for future sync.
-                        </Alert>
-                      )}
-                    </Stack>
-                  </Paper>
-
                   <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
                     <Stack spacing={2}>
                       <Typography variant="h6">Mail Filters</Typography>
@@ -525,7 +734,7 @@ const AddAsset = () => {
                               disabled={isActionLoading("syncMailbox") || !mailboxConnected || isActionLoading("loadSuggestions")}
                               sx={{ height: standardControlHeight, minWidth: 180 }}
                             >
-                              Sync from Mailbox
+                              Fetch Emails
                             </Button>
                             <Box sx={{ height: 4 }}>
                               <LinearProgress
@@ -543,8 +752,76 @@ const AddAsset = () => {
 
                   <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, minHeight: 0, display: "flex", flexDirection: "column", flex: 1 }}>
                     <Stack spacing={1.5}>
-                      <Typography variant="h6">Asset Suggestions</Typography>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: { xs: "flex-start", md: "center" },
+                          justifyContent: "space-between",
+                          gap: 1.5,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <Typography variant="h6">Asset Suggestions</Typography>
+                        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+                          {scanSummary ? (
+                            <>
+                              <Chip
+                                icon={<MailOutlineIcon />}
+                                label={`Emails Scanned: ${scanSummary.emailsScanned}`}
+                                color="primary"
+                                variant="outlined"
+                                size="small"
+                              />
+                              <Chip
+                                label={`Invoices Found: ${scanSummary.invoiceEmails}`}
+                                variant="outlined"
+                                size="small"
+                              />
+                              <Chip
+                                label={`Assets Identified: ${scanSummary.assetsDetected}`}
+                                variant="outlined"
+                                size="small"
+                              />
+                            </>
+                          ) : null}
+                        </Stack>
+                      </Box>
                       {isActionLoading("loadSuggestions") ? <CircularProgress size={20} /> : null}
+
+                      {showActivityPanel && isActionLoading("syncMailbox") ? (
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                          <Stack spacing={1.25}>
+                            <Typography variant="subtitle2">System Activity</Typography>
+                            {SYNC_ACTIVITY_STEPS.map((step, index) => {
+                              const state = activityStepStates[index] ?? "pending";
+                              return (
+                                <Box key={step} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                  {state === "completed" ? (
+                                    <CheckCircleOutlineIcon fontSize="small" color="success" />
+                                  ) : state === "in_progress" ? (
+                                    <HourglassEmptyIcon fontSize="small" color="warning" />
+                                  ) : (
+                                    <RadioButtonUncheckedIcon fontSize="small" color="disabled" />
+                                  )}
+                                  <Typography
+                                    variant="body2"
+                                    color={state === "pending" ? "text.secondary" : "text.primary"}
+                                    fontWeight={state === "in_progress" ? 600 : 400}
+                                  >
+                                    {step}
+                                  </Typography>
+                                </Box>
+                              );
+                            })}
+                            <Typography variant="body2" color="text.secondary" sx={{ pt: 0.5 }}>
+                              Processing your emails. This may take a few seconds.
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Processing emails {".".repeat(processingDots)}
+                            </Typography>
+                          </Stack>
+                        </Paper>
+                      ) : null}
 
                       {suggestions.length > 0 ? (
                         <Paper variant="outlined" sx={{ height: 420, overflowY: "auto", overflowX: "auto" }}>
@@ -789,15 +1066,42 @@ const AddAsset = () => {
         suggestion={selectedSuggestion}
         parsingMessage={parsingMessage}
         saveLoading={saveLoading}
+        uploadedDocuments={uploadedDocuments}
+        uploadedDocumentsLoading={documentsLoading}
+        isDocumentActionLoading={isDocumentActionLoading}
+        onViewUploadedDocument={(document) => {
+          handleViewUploadedDocument(document);
+        }}
+        onDeleteUploadedDocument={(documentId) => {
+          void handleDeleteUploadedDocument(documentId);
+        }}
         onClose={() => {
           if (saveLoading) {
             return;
           }
           setSelectedSuggestion(null);
+          setSelectedAssetId(null);
+          setUploadedDocuments([]);
+          setNextSuggestionPromptOpen(false);
           setParsingMessage("");
         }}
         onSave={handleSaveAsset}
       />
+
+      <Dialog open={nextSuggestionPromptOpen} onClose={() => undefined} fullWidth maxWidth="xs">
+        <DialogTitle>Asset added successfully</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Would you like to view the next asset suggestion?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleFinishAssetFlow} disabled={nextSuggestionLoading}>No</Button>
+          <Button variant="contained" onClick={() => void handleViewNextSuggestion()} disabled={nextSuggestionLoading}>
+            {nextSuggestionLoading ? "Loading..." : "Yes"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

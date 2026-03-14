@@ -35,6 +35,7 @@ import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { useNavigate } from "react-router-dom";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import {
   Asset,
   AssetSuggestion,
@@ -112,6 +113,9 @@ const Assets = () => {
   const [mailboxEmailInputError, setMailboxEmailInputError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  useAutoDismissMessage(message, setMessage, { delay: 3000 });
+  useAutoDismissMessage(error, setError, { delay: 4000 });
 
   const setActionLoading = (action: string, isLoading: boolean) => {
     setLoadingActions((prev) => ({ ...prev, [action]: isLoading }));
@@ -325,6 +329,7 @@ const Assets = () => {
     purchase_date?: string;
     warranty?: string;
     category?: string;
+    subcategory?: string;
     location?: string;
   }) => {
     if (!selectedSuggestion) {
@@ -337,6 +342,8 @@ const Assets = () => {
       await createAsset({
         name: payload.product_name ?? selectedSuggestion.product_name,
         brand: payload.brand ?? selectedSuggestion.brand,
+        category: payload.category ?? "Other",
+        subcategory: payload.subcategory ?? "Custom Asset",
         vendor: payload.vendor ?? selectedSuggestion.vendor,
         purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
         price: payload.price ?? selectedSuggestion.price,

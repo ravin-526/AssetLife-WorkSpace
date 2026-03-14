@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import { AssetSuggestion, createAsset, getAssetSuggestions, parseSuggestionAttachment, rejectSuggestion } from "../services/gmail.ts";
 
 const AssetSuggestions = () => {
@@ -21,6 +22,9 @@ const AssetSuggestions = () => {
   const [parsingMessage, setParsingMessage] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  useAutoDismissMessage(message, setMessage, { delay: 3000 });
+  useAutoDismissMessage(error, setError, { delay: 4000 });
 
   const loadSuggestions = async () => {
     const response = await getAssetSuggestions();
@@ -75,6 +79,7 @@ const AssetSuggestions = () => {
     purchase_date?: string;
     warranty?: string;
     category?: string;
+    subcategory?: string;
     location?: string;
   }) => {
     if (!selectedSuggestion) {
@@ -87,6 +92,8 @@ const AssetSuggestions = () => {
       await createAsset({
         name: payload.product_name ?? selectedSuggestion.product_name,
         brand: payload.brand ?? selectedSuggestion.brand,
+        category: payload.category ?? "Other",
+        subcategory: payload.subcategory ?? "Custom Asset",
         vendor: payload.vendor ?? selectedSuggestion.vendor,
         purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
         price: payload.price ?? selectedSuggestion.price,
