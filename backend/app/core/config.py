@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"
     OTP_STATIC_CODE: str = "123456"
+    FRONTEND_APP_URL: str = "http://localhost:3000"
+
+    GMAIL_CLIENT_ID: str = ""
+    GMAIL_CLIENT_SECRET: str = ""
+    GMAIL_REDIRECT_URI: str = ""
+    GMAIL_OAUTH_SCOPES: str = "https://www.googleapis.com/auth/gmail.readonly"
+    GMAIL_ACCESS_TOKEN: str = ""
+    GMAIL_REFRESH_TOKEN: str = ""
+    GMAIL_EMAIL_ADDRESS: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

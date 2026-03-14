@@ -56,6 +56,11 @@ type AssetPreviewModalProps = {
     subcategory?: string;
     serial_number?: string;
     model_number?: string;
+    invoice_number?: string;
+    description?: string;
+    notes?: string;
+    location?: string;
+    assigned_user?: string;
     lifecycle_info?: AssetLifecyclePayload;
     supporting_documents?: File[];
   }) => Promise<void>;
@@ -89,6 +94,9 @@ const AssetPreviewModal = ({
     subcategory: "",
     serial_number: "",
     model_number: "",
+    invoice_number: "",
+    location: "",
+    assigned_user: "",
     notes: "",
     description: "",
   });
@@ -185,12 +193,15 @@ const AssetPreviewModal = ({
       vendor: suggestion?.vendor ?? "",
       price: suggestion?.price !== undefined && suggestion?.price !== null ? String(suggestion.price) : "",
       purchase_date: suggestion?.purchase_date ? suggestion.purchase_date.slice(0, 10) : "",
-      category: "",
-      subcategory: "",
-      serial_number: "",
-      model_number: "",
-      notes: "",
-      description: "",
+      category: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["category", "asset_category"]) ?? "",
+      subcategory: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["subcategory", "sub_category", "asset_subcategory"]) ?? "",
+      serial_number: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["serial_number", "serialNo"]) ?? "",
+      model_number: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["model_number", "modelNo"]) ?? "",
+      invoice_number: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["invoice_number", "invoice_no"]) ?? "",
+      location: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["location"]) ?? "",
+      assigned_user: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["assigned_user", "assigned_to"]) ?? "",
+      notes: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["notes"]) ?? "",
+      description: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["description"]) ?? "",
     });
     setWarrantyEnabled(false);
     setWarrantyDetails({
@@ -317,9 +328,6 @@ const AssetPreviewModal = ({
       "invoice_attachment_url",
       "file",
       "invoice_file",
-      "file_path",
-      "attachment_path",
-      "invoice_attachment_path",
     ]);
 
     const fileName = getRecordValue(suggestionRecord, [
@@ -356,7 +364,13 @@ const AssetPreviewModal = ({
     }
 
     const hidden = new Set(locallyDeletedDocumentIds);
-    return uploadedDocuments.filter((document) => !hidden.has(document.document_id));
+    return uploadedDocuments.filter((document) => {
+      if (hidden.has(document.document_id)) {
+        return false;
+      }
+      const type = String(document.document_type || "").toLowerCase();
+      return !type || type === "supporting";
+    });
   }, [locallyDeletedDocumentIds, uploadedDocuments]);
 
   const previewFile = useMemo(() => {
@@ -430,6 +444,11 @@ const AssetPreviewModal = ({
       subcategory: form.subcategory || undefined,
       serial_number: form.serial_number || undefined,
       model_number: form.model_number || undefined,
+      invoice_number: form.invoice_number || undefined,
+      description: form.description || undefined,
+      notes: form.notes || undefined,
+      location: form.location || undefined,
+      assigned_user: form.assigned_user || undefined,
       lifecycle_info: {
         warranty: warrantyEnabled
           ? {
@@ -556,7 +575,19 @@ const AssetPreviewModal = ({
 
   const subcategoryOptions = useMemo(() => {
     const selected = categories.find((item) => item.category === form.category);
-    return selected?.subcategories ?? [];
+    const options = selected?.subcategories ?? [];
+    if (form.subcategory && !options.includes(form.subcategory)) {
+      return [form.subcategory, ...options];
+    }
+    return options;
+  }, [categories, form.category, form.subcategory]);
+
+  const categoryOptions = useMemo(() => {
+    const options = categories.map((item) => item.category);
+    if (form.category && !options.includes(form.category)) {
+      return [form.category, ...options];
+    }
+    return options;
   }, [categories, form.category]);
 
   return (
@@ -629,8 +660,8 @@ const AssetPreviewModal = ({
                             sx={standardFieldSx}
                             fullWidth
                           >
-                            {categories.map((item) => (
-                              <MenuItem key={item.category} value={item.category}>{item.category}</MenuItem>
+                            {categoryOptions.map((item) => (
+                              <MenuItem key={item} value={item}>{item}</MenuItem>
                             ))}
                           </TextField>
                         </Grid>
@@ -702,6 +733,36 @@ const AssetPreviewModal = ({
                             label="Model Number"
                             value={form.model_number}
                             onChange={(event) => setForm((prev) => ({ ...prev, model_number: event.target.value }))}
+                            sx={standardFieldSx}
+                            fullWidth
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            size="small"
+                            label="Invoice Number"
+                            value={form.invoice_number}
+                            onChange={(event) => setForm((prev) => ({ ...prev, invoice_number: event.target.value }))}
+                            sx={standardFieldSx}
+                            fullWidth
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            size="small"
+                            label="Location"
+                            value={form.location}
+                            onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
+                            sx={standardFieldSx}
+                            fullWidth
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            size="small"
+                            label="Assigned User"
+                            value={form.assigned_user}
+                            onChange={(event) => setForm((prev) => ({ ...prev, assigned_user: event.target.value }))}
                             sx={standardFieldSx}
                             fullWidth
                           />

@@ -38,6 +38,7 @@ import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import {
   Asset,
+  AssetLifecyclePayload,
   AssetSuggestion,
   connectMailbox,
   createAsset,
@@ -45,6 +46,7 @@ import {
   disconnectMailbox,
   fetchAssetInvoiceBlob,
   getAssetById,
+  getAssetCategories,
   getAssetSuggestions,
   getAssets,
   getMailboxStatus,
@@ -104,7 +106,10 @@ const Assets = () => {
     vendor: "",
     price: "",
     purchase_date: "",
+    category: "",
+    subcategory: "",
   });
+  const [assetCategories, setAssetCategories] = useState<{ category: string; subcategories: string[] }[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingAsset, setDeletingAsset] = useState<Asset | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -152,12 +157,17 @@ const Assets = () => {
     setMailboxEmail(status.email_address ?? "");
   };
 
+  const loadAssetCategories = async () => {
+    const response = await getAssetCategories();
+    setAssetCategories(response);
+  };
+
   useEffect(() => {
     const run = async () => {
       try {
         setLoading(true);
         setError("");
-        await Promise.all([loadAssets(), loadSuggestions(), loadMailboxStatus()]);
+        await Promise.all([loadAssets(), loadSuggestions(), loadMailboxStatus(), loadAssetCategories()]);
       } catch (requestError: unknown) {
         setError(requestError instanceof Error ? requestError.message : "Failed to fetch assets");
       } finally {
@@ -171,19 +181,9 @@ const Assets = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const wizard = params.get("wizard");
-    const gmailStatus = params.get("gmail_status");
-    const gmailMessage = params.get("gmail_message");
 
     if (wizard === "gmail") {
-      const redirectParams = new URLSearchParams();
-      if (gmailStatus) {
-        redirectParams.set("gmail_status", gmailStatus);
-      }
-      if (gmailMessage) {
-        redirectParams.set("gmail_message", gmailMessage);
-      }
-      const query = redirectParams.toString();
-      navigate(`/assets/add${query ? `?${query}` : ""}`, { replace: true });
+      navigate("/assets/add?method=email_sync", { replace: true });
     }
   }, [navigate]);
 
@@ -327,10 +327,17 @@ const Assets = () => {
     vendor?: string;
     price?: number;
     purchase_date?: string;
-    warranty?: string;
     category?: string;
     subcategory?: string;
+    serial_number?: string;
+    model_number?: string;
+    invoice_number?: string;
+    description?: string;
+    notes?: string;
     location?: string;
+    assigned_user?: string;
+    lifecycle_info?: AssetLifecyclePayload;
+    supporting_documents?: File[];
   }) => {
     if (!selectedSuggestion) {
       return;
@@ -339,7 +346,7 @@ const Assets = () => {
     try {
       setSaveLoading(true);
       setError("");
-      await createAsset({
+      const createdAsset = await createAsset({
         name: payload.product_name ?? selectedSuggestion.product_name,
         brand: payload.brand ?? selectedSuggestion.brand,
         category: payload.category ?? "Other",
@@ -347,6 +354,14 @@ const Assets = () => {
         vendor: payload.vendor ?? selectedSuggestion.vendor,
         purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
         price: payload.price ?? selectedSuggestion.price,
+        serial_number: payload.serial_number,
+        model_number: payload.model_number,
+        invoice_number: payload.invoice_number,
+        description: payload.description,
+        notes: payload.notes,
+        location: payload.location,
+        assigned_user: payload.assigned_user,
+        lifecycle_info: payload.lifecycle_info,
         source: "gmail",
         suggestion_id: selectedSuggestion.id,
       });
@@ -355,7 +370,12 @@ const Assets = () => {
       setSelectedSuggestion(null);
       setParsingMessage("");
       await loadAssets();
-      setMessage("Suggestion added. Asset saved successfully.");
+      const reminderCount = Number(createdAsset.auto_reminders_created || 0);
+      if (reminderCount > 0) {
+        setMessage(`Suggestion added. Asset saved successfully with ${reminderCount} reminder${reminderCount === 1 ? "" : "s"}.`);
+      } else {
+        setMessage("Suggestion added. Asset saved successfully.");
+      }
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Failed to save asset");
     } finally {
@@ -399,6 +419,8 @@ const Assets = () => {
       vendor: asset.vendor || "",
       price: asset.price !== null && asset.price !== undefined ? String(asset.price) : "",
       purchase_date: asset.purchase_date ? asset.purchase_date.slice(0, 10) : "",
+      category: asset.category || "",
+      subcategory: asset.subcategory || "",
     });
     setEditDialogOpen(true);
   };
@@ -499,6 +521,8 @@ const Assets = () => {
         vendor: editForm.vendor.trim() || undefined,
         price: editForm.price ? Number(editForm.price) : undefined,
         purchase_date: editForm.purchase_date || undefined,
+        category: editForm.category.trim() || undefined,
+        subcategory: editForm.subcategory.trim() || undefined,
       };
       await updateAsset(editingAsset.id, payload);
       await loadAssets();
@@ -541,13 +565,13 @@ const Assets = () => {
 
   const filteredAssets = useMemo(() => {
     return assets.filter((asset) => {
-      const text = [asset.name, asset.brand, asset.vendor, asset.source]
+      const text = [asset.name, asset.brand, asset.vendor, asset.source, asset.category, asset.subcategory]
         .map((value) => String(value || "").toLowerCase())
         .join(" ");
       const searchMatch = !normalizedQuery || text.includes(normalizedQuery);
 
       const nameMatch = !nameFilter.trim() || String(asset.name || "").toLowerCase().includes(nameFilter.trim().toLowerCase());
-      const brandMatch = !brandFilter.trim() || String(asset.brand || "").toLowerCase().includes(brandFilter.trim().toLowerCase());
+      const brandMatch = !brandFilter.trim() || String(asset.category || "").toLowerCase().includes(brandFilter.trim().toLowerCase());
       const vendorMatch = !vendorFilter.trim() || String(asset.vendor || "").toLowerCase().includes(vendorFilter.trim().toLowerCase());
       const sourceMatch = !sourceFilter.trim() || String(asset.source || "").toLowerCase().includes(sourceFilter.trim().toLowerCase());
 
@@ -567,8 +591,25 @@ const Assets = () => {
   }, [assets, normalizedQuery, nameFilter, brandFilter, vendorFilter, sourceFilter, amountExact, amountMin, amountMax, dateFrom, dateTo]);
 
   const categoryOptions = useMemo(() => {
-    return Array.from(new Set(assets.map((asset) => String(asset.brand || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(assets.map((asset) => String(asset.category || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [assets]);
+
+  const editCategoryOptions = useMemo(() => {
+    const options = assetCategories.map((item) => item.category);
+    if (editForm.category && !options.includes(editForm.category)) {
+      return [editForm.category, ...options];
+    }
+    return options;
+  }, [assetCategories, editForm.category]);
+
+  const editSubcategoryOptions = useMemo(() => {
+    const matched = assetCategories.find((item) => item.category === editForm.category);
+    const options = matched?.subcategories ?? [];
+    if (editForm.subcategory && !options.includes(editForm.subcategory)) {
+      return [editForm.subcategory, ...options];
+    }
+    return options;
+  }, [assetCategories, editForm.category, editForm.subcategory]);
 
   const statusOptions = useMemo(() => {
     return Array.from(new Set(assets.map((asset) => String(asset.source || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -623,6 +664,19 @@ const Assets = () => {
     setExportAnchorEl(null);
   };
 
+  const handleStartWizard = () => {
+    const methodMap: Record<WizardSource, string> = {
+      gmail: "email_sync",
+      qr: "barcode_qr",
+      invoice: "invoice_upload",
+      excel: "excel_upload",
+      manual: "manual_entry",
+    };
+    const method = methodMap[selectedSource] || "email_sync";
+    setWizardOpen(false);
+    navigate(`/assets/add?method=${method}`);
+  };
+
   return (
     <Box
       className="grid"
@@ -638,7 +692,7 @@ const Assets = () => {
             <Typography variant="h4">Assets</Typography>
           </div>
           <div className="col-12 md:col-6 flex md:justify-content-end">
-            <Button variant="contained" onClick={() => navigate("/assets/add")}>Add Asset</Button>
+            <Button variant="contained" onClick={() => setWizardOpen(true)}>Add Asset</Button>
           </div>
         </div>
       </Box>
@@ -834,7 +888,7 @@ const Assets = () => {
                           }}
                         >
                           <Typography variant="body2">{asset.name || "-"}</Typography>
-                          <Typography variant="body2">{asset.brand || "-"}</Typography>
+                          <Typography variant="body2">{asset.category || "-"}</Typography>
                           <Typography variant="body2">{asset.vendor || "-"}</Typography>
                           <Typography variant="body2">{asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : "-"}</Typography>
                           <Tooltip title={warranty.tooltip}>
@@ -917,6 +971,29 @@ const Assets = () => {
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <TextField label="Name" value={editForm.name} onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))} fullWidth />
             <TextField label="Brand" value={editForm.brand} onChange={(e) => setEditForm((prev) => ({ ...prev, brand: e.target.value }))} fullWidth />
+            <TextField
+              select
+              label="Category"
+              value={editForm.category}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value, subcategory: "" }))}
+              fullWidth
+            >
+              {editCategoryOptions.map((option) => (
+                <MenuItem key={option} value={option}>{option}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label="SubCategory"
+              value={editForm.subcategory}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, subcategory: e.target.value }))}
+              fullWidth
+              disabled={!editForm.category}
+            >
+              {editSubcategoryOptions.map((option) => (
+                <MenuItem key={option} value={option}>{option}</MenuItem>
+              ))}
+            </TextField>
             <TextField label="Vendor" value={editForm.vendor} onChange={(e) => setEditForm((prev) => ({ ...prev, vendor: e.target.value }))} fullWidth />
             <TextField label="Price" type="number" value={editForm.price} onChange={(e) => setEditForm((prev) => ({ ...prev, price: e.target.value }))} fullWidth />
             <TextField label="Purchase Date" type="date" value={editForm.purchase_date} onChange={(e) => setEditForm((prev) => ({ ...prev, purchase_date: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
@@ -955,7 +1032,7 @@ const Assets = () => {
           {quickViewAsset ? (
             <Stack spacing={1.25}>
               <Typography variant="body2"><strong>Asset Name:</strong> {quickViewAsset.name || "-"}</Typography>
-              <Typography variant="body2"><strong>Category:</strong> {quickViewAsset.brand || "-"}</Typography>
+              <Typography variant="body2"><strong>Category:</strong> {quickViewAsset.category || "-"}</Typography>
               <Typography variant="body2"><strong>Vendor:</strong> {quickViewAsset.vendor || "-"}</Typography>
               <Typography variant="body2"><strong>Purchase Date:</strong> {quickViewAsset.purchase_date ? new Date(quickViewAsset.purchase_date).toLocaleDateString() : "-"}</Typography>
               <Typography variant="body2"><strong>Purchase Price:</strong> {quickViewAsset.price ?? "-"}</Typography>
@@ -981,6 +1058,34 @@ const Assets = () => {
           </Box>
         </Box>
       </Drawer>
+
+      <Dialog open={wizardOpen} onClose={() => setWizardOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Add Asset Wizard</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Choose how you want to add assets.
+            </Typography>
+            <TextField
+              select
+              label="Select Method"
+              value={selectedSource}
+              onChange={(event) => setSelectedSource(event.target.value as WizardSource)}
+              fullWidth
+            >
+              <MenuItem value="gmail">Sync from Mailbox</MenuItem>
+              <MenuItem value="qr">QR / Bar Code Scan</MenuItem>
+              <MenuItem value="invoice">Invoice Upload</MenuItem>
+              <MenuItem value="excel">Excel Upload</MenuItem>
+              <MenuItem value="manual">Manual</MenuItem>
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWizardOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleStartWizard}>Continue</Button>
+        </DialogActions>
+      </Dialog>
 
     </Box>
   );

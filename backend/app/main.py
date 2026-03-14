@@ -5,8 +5,14 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logger import app_logger, configure_logging
 from app.db.mongo import get_mongo_manager
+from app.routes.asset_suggestions import router as asset_suggestions_router
+from app.routes.assets import router as assets_router
 from app.routes.auth import router as auth_router
+from app.routes.categories import router as categories_router
+from app.routes.email_scans import router as email_scans_router
+from app.routes.gmail_integration import router as gmail_integration_router
 from app.routes.individual import router as individual_router
+from app.routes.reminders import router as reminders_router
 from app.routes.user import router as user_router
 
 
@@ -20,7 +26,7 @@ configure_logging()
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten later
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,6 +37,12 @@ register_exception_handlers(app)
 app.include_router(auth_router)
 app.include_router(individual_router)
 app.include_router(user_router)
+app.include_router(gmail_integration_router)
+app.include_router(email_scans_router)
+app.include_router(asset_suggestions_router)
+app.include_router(assets_router)
+app.include_router(categories_router)
+app.include_router(reminders_router)
 
 
 @app.on_event("startup")

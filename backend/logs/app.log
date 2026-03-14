@@ -177,3 +177,90 @@
 {"timestamp": "2026-03-10T21:17:02.401513+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
 {"timestamp": "2026-03-10T21:45:29.124507+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
 {"timestamp": "2026-03-10T21:45:31.178236+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-14T20:07:32.654582+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:08:16.117630+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:08:16.375751+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:08:39.318362+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:08:39.572179+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:08:59.278735+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:08:59.520929+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:09:34.191745+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:09:34.436641+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:09:45.658951+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:09:45.893391+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:09:53.273769+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:09:53.514802+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:10:26.665193+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:10:26.938372+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:11:20.522137+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:11:20.777826+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:12:33.949873+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:12:34.204488+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:12:52.905084+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:12:53.147249+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:13:01.434061+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:25:50.512449+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:26:38.014925+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-14T20:26:39.329322+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-14T20:32:49.255410+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:32:49.538809+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:32:59.450057+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:32:59.743212+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:34:07.065257+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:34:07.353459+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:34:20.187425+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:34:20.455810+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:38:49.119897+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:38:49.415732+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:38:54.371291+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:38:54.709141+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:40:06.881799+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:40:07.174095+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:45:06.190711+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:45:06.478015+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:45:09.813541+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:45:10.096872+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:46:53.808754+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T20:47:20.338153+00:00", "level": "INFO", "logger": "assetlife", "message": "Gmail sync completed"}
+{"timestamp": "2026-03-14T20:47:27.237601+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T20:47:52.902581+00:00", "level": "INFO", "logger": "assetlife", "message": "Gmail sync completed"}
+{"timestamp": "2026-03-14T20:49:25.576315+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:49:25.875775+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:49:53.979783+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T20:50:22.611383+00:00", "level": "INFO", "logger": "assetlife", "message": "Gmail sync completed"}
+{"timestamp": "2026-03-14T20:50:40.462044+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T20:51:04.493705+00:00", "level": "INFO", "logger": "assetlife", "message": "Gmail sync completed"}
+{"timestamp": "2026-03-14T20:52:28.874733+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:52:29.260378+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:53:09.992852+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T20:53:34.716627+00:00", "level": "INFO", "logger": "assetlife", "message": "Gmail sync completed"}
+{"timestamp": "2026-03-14T20:57:56.501908+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:57:56.872040+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T20:58:03.652237+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T20:58:03.934949+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:00:10.516398+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T21:00:39.373550+00:00", "level": "INFO", "logger": "assetlife", "message": "Gmail sync completed"}
+{"timestamp": "2026-03-14T21:00:39.378526+00:00", "level": "ERROR", "logger": "assetlife", "message": "Email scan route failed", "exception": "Traceback (most recent call last):\n  File \"/Users/ravikumar/Private/Work/Projects/assetlife-workspace/backend/app/routes/email_scans.py\", line 95, in run_email_scan\n    return GmailSyncResponse(**result)\n  File \"/Users/ravikumar/Private/Work/Projects/assetlife-workspace/backend/.venv/lib/python3.14/site-packages/pydantic/main.py\", line 250, in __init__\n    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)\npydantic_core._pydantic_core.ValidationError: 2 validation errors for GmailSyncResponse\nsuggestions.0.id\n  Field required [type=missing, input_value={'_id': ObjectId('69b5cc6...T21:00:20.221874+00:00'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/missing\nsuggestions.0.email_date\n  Input should be a valid datetime or date, invalid character in year [type=datetime_from_date_parsing, input_value='Fri, 6 Mar 2026 07:10:46 +0000', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/datetime_from_date_parsing"}
+{"timestamp": "2026-03-14T21:03:05.022731+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:03:51.431341+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:04:03.360748+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:04:03.641467+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:04:17.389286+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:04:17.685587+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:04:27.088731+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:04:27.380161+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:05:02.561286+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T21:05:27.941784+00:00", "level": "ERROR", "logger": "assetlife", "message": "Email scan route failed", "exception": "Traceback (most recent call last):\n  File \"/Users/ravikumar/Private/Work/Projects/assetlife-workspace/backend/app/routes/email_scans.py\", line 111, in run_email_scan\n    return GmailSyncResponse(**result)\n  File \"/Users/ravikumar/Private/Work/Projects/assetlife-workspace/backend/.venv/lib/python3.14/site-packages/pydantic/main.py\", line 250, in __init__\n    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)\npydantic_core._pydantic_core.ValidationError: 2 validation errors for GmailSyncResponse\nsuggestions.0.id\n  Field required [type=missing, input_value={'_id': ObjectId('69b5cd8...T21:05:10.323878+00:00'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/missing\nsuggestions.0.email_date\n  Input should be a valid datetime or date, invalid character in year [type=datetime_from_date_parsing, input_value='Fri, 6 Mar 2026 07:10:46 +0000', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/datetime_from_date_parsing"}
+{"timestamp": "2026-03-14T21:07:44.297867+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:07:44.679481+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:08:27.808493+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
+{"timestamp": "2026-03-14T21:08:54.424966+00:00", "level": "INFO", "logger": "assetlife", "message": "Email scan completed"}
+{"timestamp": "2026-03-14T21:16:06.954069+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:16:58.997973+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:26:20.035534+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:26:22.396415+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:29:25.343526+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-14T21:29:25.705357+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-14T21:29:47.632216+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-14T21:30:04.104754+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-14T21:30:05.376525+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}

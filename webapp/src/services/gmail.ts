@@ -2,6 +2,7 @@ import api, { getAuthorizationHeader } from "./api.ts";
 
 export type GmailStatusResponse = {
   connected: boolean;
+  mailbox_type?: string;
   email_address?: string | null;
   last_sync_at?: string | null;
 };
@@ -97,6 +98,11 @@ export type Asset = {
   subcategory?: string | null;
   serial_number?: string | null;
   model_number?: string | null;
+  invoice_number?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  location?: string | null;
+  assigned_user?: string | null;
   warranty?: Record<string, unknown> | null;
   insurance?: Record<string, unknown> | null;
   service?: Record<string, unknown> | null;
@@ -104,6 +110,7 @@ export type Asset = {
   source_email_sender?: string | null;
   source_email_subject?: string | null;
   invoice_attachment_path?: string | null;
+  auto_reminders_created?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -163,6 +170,16 @@ export type AssetUpdatePayload = {
   vendor?: string;
   purchase_date?: string;
   price?: number;
+  category?: string;
+  subcategory?: string;
+  serial_number?: string;
+  model_number?: string;
+  invoice_number?: string;
+  description?: string;
+  notes?: string;
+  location?: string;
+  assigned_user?: string;
+  lifecycle_info?: AssetLifecyclePayload;
 };
 
 export const getGmailStatus = async (): Promise<GmailStatusResponse> => {
@@ -232,6 +249,11 @@ export const getAssetSuggestions = async (): Promise<AssetSuggestion[]> => {
   return response.data;
 };
 
+export const clearTemporarySuggestions = async (): Promise<{ deleted: number }> => {
+  const response = await api.post<{ deleted: number }>("/api/assets/suggestions/clear-temp");
+  return response.data;
+};
+
 export const confirmSuggestion = async (
   suggestionId: string,
   payload?: {
@@ -268,6 +290,11 @@ export const createAsset = async (payload: {
   price?: number;
   serial_number?: string;
   model_number?: string;
+  invoice_number?: string;
+  description?: string;
+  notes?: string;
+  location?: string;
+  assigned_user?: string;
   lifecycle_info?: AssetLifecyclePayload;
   source?: string;
   suggestion_id?: string;

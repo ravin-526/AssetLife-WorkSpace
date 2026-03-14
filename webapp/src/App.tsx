@@ -28,7 +28,6 @@ const getPageTitle = (pathname: string) => {
     "/register": "Register",
     "/dashboard": "Dashboard",
     "/integrations/email": "Email Integrations",
-    "/assets/import-gmail": "Import Gmail",
     "/emails": "Email Scans",
     "/assets/suggestions": "Asset Suggestions",
     "/assets": "Assets",
@@ -88,7 +87,6 @@ const App = () => {
           >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/integrations/email" element={<EmailIntegrations />} />
-            <Route path="/assets/import-gmail" element={<EmailIntegrations />} />
             <Route path="/emails" element={<EmailScans />} />
             <Route path="/assets/suggestions" element={<AssetSuggestions />} />
             <Route path="/assets" element={<Assets />} />

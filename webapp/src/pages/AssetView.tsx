@@ -58,10 +58,26 @@ const AssetView = () => {
               <div className="grid mt-1">
                 <div className="col-12 md:col-6"><Typography><strong>Name:</strong> {asset.name}</Typography></div>
                 <div className="col-12 md:col-6"><Typography><strong>Brand:</strong> {asset.brand || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Category:</strong> {asset.category || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>SubCategory:</strong> {asset.subcategory || "-"}</Typography></div>
                 <div className="col-12 md:col-6"><Typography><strong>Vendor:</strong> {asset.vendor || "-"}</Typography></div>
                 <div className="col-12 md:col-6"><Typography><strong>Price:</strong> {asset.price ?? "-"}</Typography></div>
                 <div className="col-12 md:col-6"><Typography><strong>Purchase Date:</strong> {asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Invoice Number:</strong> {asset.invoice_number || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Serial Number:</strong> {asset.serial_number || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Model Number:</strong> {asset.model_number || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Location:</strong> {asset.location || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Assigned User:</strong> {asset.assigned_user || "-"}</Typography></div>
                 <div className="col-12 md:col-6"><Typography><strong>Source:</strong> {asset.source}</Typography></div>
+              </div>
+              <Divider sx={{ my: 1 }} />
+              <div className="grid">
+                <div className="col-12 md:col-6"><Typography><strong>Description:</strong> {asset.description || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Notes:</strong> {asset.notes || "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Warranty:</strong> {asset.warranty ? "Available" : "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Insurance:</strong> {asset.insurance ? "Available" : "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Service Plan:</strong> {asset.service ? "Configured" : "-"}</Typography></div>
+                <div className="col-12 md:col-6"><Typography><strong>Auto Reminders:</strong> {asset.auto_reminders_created ?? 0}</Typography></div>
               </div>
               <Divider sx={{ my: 1 }} />
               <div className="grid">

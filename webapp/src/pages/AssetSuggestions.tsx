@@ -11,7 +11,7 @@ import {
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
-import { AssetSuggestion, createAsset, getAssetSuggestions, parseSuggestionAttachment, rejectSuggestion } from "../services/gmail.ts";
+import { AssetLifecyclePayload, AssetSuggestion, createAsset, getAssetSuggestions, parseSuggestionAttachment, rejectSuggestion } from "../services/gmail.ts";
 
 const AssetSuggestions = () => {
   const [suggestions, setSuggestions] = useState<AssetSuggestion[]>([]);
@@ -77,10 +77,17 @@ const AssetSuggestions = () => {
     vendor?: string;
     price?: number;
     purchase_date?: string;
-    warranty?: string;
     category?: string;
     subcategory?: string;
+    serial_number?: string;
+    model_number?: string;
+    invoice_number?: string;
+    description?: string;
+    notes?: string;
     location?: string;
+    assigned_user?: string;
+    lifecycle_info?: AssetLifecyclePayload;
+    supporting_documents?: File[];
   }) => {
     if (!selectedSuggestion) {
       return;
@@ -89,7 +96,7 @@ const AssetSuggestions = () => {
     try {
       setSaveLoading(true);
       setError("");
-      await createAsset({
+      const createdAsset = await createAsset({
         name: payload.product_name ?? selectedSuggestion.product_name,
         brand: payload.brand ?? selectedSuggestion.brand,
         category: payload.category ?? "Other",
@@ -97,11 +104,24 @@ const AssetSuggestions = () => {
         vendor: payload.vendor ?? selectedSuggestion.vendor,
         purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
         price: payload.price ?? selectedSuggestion.price,
+        serial_number: payload.serial_number,
+        model_number: payload.model_number,
+        invoice_number: payload.invoice_number,
+        description: payload.description,
+        notes: payload.notes,
+        location: payload.location,
+        assigned_user: payload.assigned_user,
+        lifecycle_info: payload.lifecycle_info,
         source: "gmail",
         suggestion_id: selectedSuggestion.id,
       });
 
-      setMessage("Asset saved successfully");
+      const reminderCount = Number(createdAsset.auto_reminders_created || 0);
+      if (reminderCount > 0) {
+        setMessage(`Asset saved successfully with ${reminderCount} reminder${reminderCount === 1 ? "" : "s"}.`);
+      } else {
+        setMessage("Asset saved successfully");
+      }
       setSuggestions((prev) => prev.filter((item) => item.id !== selectedSuggestion.id));
       setSelectedSuggestion(null);
     } catch (requestError: unknown) {

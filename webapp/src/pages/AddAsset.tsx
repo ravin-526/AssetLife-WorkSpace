@@ -29,6 +29,7 @@ import {
   AssetLifecyclePayload,
   AssetSuggestion,
   UploadedAssetDocument,
+  clearTemporarySuggestions,
   connectMailbox,
   createAsset,
   deleteAssetDocument,
@@ -37,11 +38,12 @@ import {
   getAssetSuggestions,
   getMailboxStatus,
   parseSuggestionAttachment,
+  rejectSuggestion,
   syncMailboxEmails,
   uploadAssetDocuments,
 } from "../services/gmail.ts";
 
-type AddAssetMethod = "email_sync" | "excel_upload" | "barcode_qr" | "manual_entry";
+type AddAssetMethod = "email_sync" | "invoice_upload" | "excel_upload" | "barcode_qr" | "manual_entry";
 type ActivityStepState = "completed" | "in_progress" | "pending";
 
 type ScanSummary = {
@@ -71,6 +73,7 @@ const AddAsset = () => {
   const [parsingSuggestionId, setParsingSuggestionId] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
   const [mailboxConnected, setMailboxConnected] = useState(false);
+  const [mailboxType, setMailboxType] = useState("mailbox");
   const [mailboxEmail, setMailboxEmail] = useState("");
   const [scanDays, setScanDays] = useState(10);
   const [useCustomScanRange, setUseCustomScanRange] = useState(false);
@@ -88,6 +91,9 @@ const AddAsset = () => {
   const [documentsActionLoading, setDocumentsActionLoading] = useState<Record<string, boolean>>({});
   const [nextSuggestionPromptOpen, setNextSuggestionPromptOpen] = useState(false);
   const [nextSuggestionLoading, setNextSuggestionLoading] = useState(false);
+  const [reminderPromptOpen, setReminderPromptOpen] = useState(false);
+  const [deferNextSuggestionPrompt, setDeferNextSuggestionPrompt] = useState(false);
+  const [lastReminderCount, setLastReminderCount] = useState(0);
   const [showActivityPanel, setShowActivityPanel] = useState(false);
   const [activityStepStates, setActivityStepStates] = useState<ActivityStepState[]>(
     SYNC_ACTIVITY_STEPS.map(() => "pending")
@@ -138,6 +144,7 @@ const AddAsset = () => {
   const loadMailboxStatus = async () => {
     const status = await getMailboxStatus();
     setMailboxConnected(status.connected);
+    setMailboxType((status.mailbox_type || "mailbox").toLowerCase());
     setMailboxEmail(status.email_address ?? "");
   };
 
@@ -174,17 +181,21 @@ const AddAsset = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const gmailStatus = params.get("gmail_status");
-    const gmailMessage = params.get("gmail_message");
-
-    if (gmailStatus === "connected") {
-      setMessage("Gmail connected successfully. You can run mailbox sync now.");
-    }
-    if (gmailStatus === "error") {
-      setError(gmailMessage || "Failed to connect Gmail.");
+    const method = params.get("method");
+    if (method === "email_sync" || method === "invoice_upload" || method === "excel_upload" || method === "barcode_qr" || method === "manual_entry") {
+      setSelectedMethod(method);
     }
 
-    if (gmailStatus || gmailMessage) {
+    const status = params.get("status");
+    const callbackMessage = params.get("message");
+    if (status === "connected") {
+      setMessage("Mailbox connected successfully. You can run mailbox sync now.");
+    }
+    if (status === "error") {
+      setError(callbackMessage || "Failed to connect mailbox.");
+    }
+
+    if (method || status || callbackMessage) {
       window.history.replaceState({}, "", "/assets/add");
     }
   }, []);
@@ -418,6 +429,11 @@ const AddAsset = () => {
     subcategory?: string;
     serial_number?: string;
     model_number?: string;
+    invoice_number?: string;
+    description?: string;
+    notes?: string;
+    location?: string;
+    assigned_user?: string;
     lifecycle_info?: AssetLifecyclePayload;
     supporting_documents?: File[];
   }) => {
@@ -438,6 +454,11 @@ const AddAsset = () => {
         price: payload.price ?? selectedSuggestion.price,
         serial_number: payload.serial_number,
         model_number: payload.model_number,
+        invoice_number: payload.invoice_number,
+        description: payload.description,
+        notes: payload.notes,
+        location: payload.location,
+        assigned_user: payload.assigned_user,
         lifecycle_info: payload.lifecycle_info,
         source: "gmail",
         suggestion_id: selectedSuggestion.id,
@@ -463,7 +484,15 @@ const AddAsset = () => {
         )
       );
       setMessage("Asset added successfully");
-      setNextSuggestionPromptOpen(true);
+      const reminderCount = Number(createdAsset.auto_reminders_created || 0);
+      if (reminderCount > 0) {
+        setLastReminderCount(reminderCount);
+        setNextSuggestionPromptOpen(false);
+        setReminderPromptOpen(true);
+        setDeferNextSuggestionPrompt(true);
+      } else {
+        setNextSuggestionPromptOpen(true);
+      }
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Failed to save asset");
     } finally {
@@ -477,14 +506,10 @@ const AddAsset = () => {
       setError("");
       const latestSuggestions = await getAssetSuggestions();
       setSuggestions(latestSuggestions);
-      const nextSuggestion = latestSuggestions.find((item) => !item.already_added);
+      const nextSuggestion = latestSuggestions.find((item) => !item.already_added && String(item.status || "").toLowerCase() !== "rejected");
 
       if (!nextSuggestion) {
-        setNextSuggestionPromptOpen(false);
-        setSelectedSuggestion(null);
-        setSelectedAssetId(null);
-        setUploadedDocuments([]);
-        navigate("/assets");
+        handleFinishAssetFlow();
         return;
       }
 
@@ -499,12 +524,46 @@ const AddAsset = () => {
   };
 
   const handleFinishAssetFlow = () => {
-    setNextSuggestionPromptOpen(false);
-    setSelectedSuggestion(null);
-    setSelectedAssetId(null);
-    setUploadedDocuments([]);
-    setParsingMessage("");
-    navigate("/assets");
+    const run = async () => {
+      try {
+        await clearTemporarySuggestions();
+      } catch {
+        // Keep UX non-blocking; user can continue even if cleanup fails.
+      } finally {
+        setNextSuggestionPromptOpen(false);
+        setSelectedSuggestion(null);
+        setSelectedAssetId(null);
+        setUploadedDocuments([]);
+        setReminderPromptOpen(false);
+        setDeferNextSuggestionPrompt(false);
+        setLastReminderCount(0);
+        setParsingMessage("");
+        navigate("/assets");
+      }
+    };
+    void run();
+  };
+
+  const handleSkipSuggestion = async (suggestion: AssetSuggestion) => {
+    try {
+      setActionLoading(`skip-${suggestion.id}`, true);
+      await rejectSuggestion(suggestion.id);
+      setSuggestions((prev) =>
+        prev.map((item) =>
+          item.id === suggestion.id
+            ? {
+                ...item,
+                status: "rejected",
+              }
+            : item
+        )
+      );
+      setMessage("Suggestion skipped.");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to skip suggestion");
+    } finally {
+      setActionLoading(`skip-${suggestion.id}`, false);
+    }
   };
 
   const formatSuggestionPrice = (price?: number) => {
@@ -572,6 +631,7 @@ const AddAsset = () => {
                 fullWidth
               >
                 <MenuItem value="email_sync">Email Sync</MenuItem>
+                <MenuItem value="invoice_upload">Invoice Upload</MenuItem>
                 <MenuItem value="excel_upload">Excel Upload</MenuItem>
                 <MenuItem value="barcode_qr">Barcode / QR Code Scan</MenuItem>
                 <MenuItem value="manual_entry">Manual Entry</MenuItem>
@@ -601,31 +661,34 @@ const AddAsset = () => {
                     }}
                   />
                   <Typography variant="body2" fontWeight={500}>
-                    {mailboxConnected ? "Connected to Gmail" : "Not Connected"}
+                    {mailboxConnected ? `Connected to ${mailboxType}` : "Not Connected"}
                   </Typography>
                 </Box>
 
-                <Button
-                  variant="outlined"
-                  color={mailboxConnected ? "error" : "primary"}
-                  onClick={() => {
-                    if (mailboxConnected) {
+                {mailboxConnected ? (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={() => {
                       void handleDisconnectMailbox();
-                    } else {
+                    }}
+                    disabled={isActionLoading("connectMailbox") || isActionLoading("disconnectMailbox")}
+                    sx={{ height: standardControlHeight }}
+                  >
+                    {isActionLoading("disconnectMailbox") ? "Disconnecting..." : "Disconnect"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    onClick={() => {
                       void handleConnectClick();
-                    }
-                  }}
-                  disabled={isActionLoading("connectMailbox") || isActionLoading("disconnectMailbox")}
-                  sx={{ height: standardControlHeight }}
-                >
-                  {isActionLoading("connectMailbox")
-                    ? "Connecting..."
-                    : isActionLoading("disconnectMailbox")
-                      ? "Disconnecting..."
-                      : mailboxConnected
-                        ? "Disconnect"
-                        : "Connect"}
-                </Button>
+                    }}
+                    disabled={isActionLoading("connectMailbox") || isActionLoading("disconnectMailbox")}
+                    sx={{ height: standardControlHeight }}
+                  >
+                    {isActionLoading("connectMailbox") ? "Connecting..." : "Connect Mailbox"}
+                  </Button>
+                )}
               </Box>
             </Fade>
           </Box>
@@ -734,7 +797,7 @@ const AddAsset = () => {
                               disabled={isActionLoading("syncMailbox") || !mailboxConnected || isActionLoading("loadSuggestions")}
                               sx={{ height: standardControlHeight, minWidth: 180 }}
                             >
-                              Fetch Emails
+                              Sync Mail
                             </Button>
                             <Box sx={{ height: 4 }}>
                               <LinearProgress
@@ -829,7 +892,7 @@ const AddAsset = () => {
                             <Box
                               sx={{
                                 display: "grid",
-                                gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1.1fr 0.9fr",
+                                gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1.2fr 1.2fr",
                                 columnGap: 2,
                                 px: 2,
                                 py: 1.25,
@@ -849,46 +912,73 @@ const AddAsset = () => {
                               <Typography variant="subtitle2">Action</Typography>
                             </Box>
 
-                            {suggestions.map((suggestion) => (
-                              <Box
-                                key={suggestion.id}
-                                sx={{
-                                  display: "grid",
-                                  gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1.1fr 0.9fr",
-                                  columnGap: 2,
-                                  alignItems: "center",
-                                  px: 2,
-                                  py: 1.1,
-                                  borderBottom: 1,
-                                  borderColor: "divider",
-                                }}
-                              >
-                                <Typography variant="body2">{suggestion.product_name || "-"}</Typography>
-                                <Typography variant="body2">{suggestion.vendor || suggestion.sender || "-"}</Typography>
-                                <Typography variant="body2">{formatSuggestionPrice(suggestion.price)}</Typography>
-                                <Typography variant="body2">
-                                  {suggestion.purchase_date ? new Date(suggestion.purchase_date).toLocaleDateString() : "-"}
-                                </Typography>
-                                <Typography variant="body2" color={suggestion.already_added ? "warning.main" : "success.main"}>
-                                  {suggestion.already_added ? "Already Added" : "New"}
-                                </Typography>
-                                <Button
-                                  variant="outlined"
-                                  onClick={() => {
-                                    void handlePrepareSave(suggestion);
-                                  }}
-                                  disabled={suggestion.already_added || parsingSuggestionId === suggestion.id}
+                            {suggestions.map((suggestion) => {
+                              const isSkipped = String(suggestion.status || "").toLowerCase() === "rejected";
+                              const skipActionKey = `skip-${suggestion.id}`;
+                              const skipLoading = isActionLoading(skipActionKey);
+
+                              return (
+                                <Box
+                                  key={suggestion.id}
                                   sx={{
-                                    height: standardControlHeight,
-                                    minWidth: 90,
-                                    px: 1.5,
-                                    fontSize: "0.875rem",
+                                    display: "grid",
+                                    gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1.2fr 1.2fr",
+                                    columnGap: 2,
+                                    alignItems: "center",
+                                    px: 2,
+                                    py: 1.1,
+                                    borderBottom: 1,
+                                    borderColor: "divider",
                                   }}
                                 >
-                                  {suggestion.already_added ? "Added" : parsingSuggestionId === suggestion.id ? "Parsing..." : "Add"}
-                                </Button>
-                              </Box>
-                            ))}
+                                  <Typography variant="body2">{suggestion.product_name || "-"}</Typography>
+                                  <Typography variant="body2">{suggestion.vendor || suggestion.sender || "-"}</Typography>
+                                  <Typography variant="body2">{formatSuggestionPrice(suggestion.price)}</Typography>
+                                  <Typography variant="body2">
+                                    {suggestion.purchase_date ? new Date(suggestion.purchase_date).toLocaleDateString() : "-"}
+                                  </Typography>
+                                  <Chip
+                                    size="small"
+                                    label={suggestion.already_added ? "Added" : isSkipped ? "Skipped" : "New"}
+                                    color={suggestion.already_added ? "success" : isSkipped ? "default" : "primary"}
+                                    variant={suggestion.already_added || isSkipped ? "filled" : "outlined"}
+                                  />
+                                  <Stack direction="row" spacing={1}>
+                                    <Button
+                                      variant="outlined"
+                                      onClick={() => {
+                                        void handlePrepareSave(suggestion);
+                                      }}
+                                      disabled={suggestion.already_added || isSkipped || parsingSuggestionId === suggestion.id}
+                                      sx={{
+                                        height: standardControlHeight,
+                                        minWidth: 82,
+                                        px: 1.25,
+                                        fontSize: "0.875rem",
+                                      }}
+                                    >
+                                      {suggestion.already_added ? "Added" : parsingSuggestionId === suggestion.id ? "Parsing..." : "Add"}
+                                    </Button>
+                                    <Button
+                                      variant="text"
+                                      color="warning"
+                                      onClick={() => {
+                                        void handleSkipSuggestion(suggestion);
+                                      }}
+                                      disabled={suggestion.already_added || isSkipped || skipLoading}
+                                      sx={{
+                                        height: standardControlHeight,
+                                        minWidth: 72,
+                                        px: 1,
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      {skipLoading ? "Skipping..." : "Skip"}
+                                    </Button>
+                                  </Stack>
+                                </Box>
+                              );
+                            })}
                           </Box>
                         </Paper>
                       ) : (
@@ -935,6 +1025,17 @@ const AddAsset = () => {
                         </Button>
                       </div>
                     </div>
+                  </Stack>
+                </Paper>
+              ) : null}
+
+              {selectedMethod === "invoice_upload" ? (
+                <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+                  <Stack spacing={1.5}>
+                    <Typography variant="h6">Invoice Upload</Typography>
+                    <Alert severity="info">
+                      Upload invoice flow is enabled via attachment parsing when saving mailbox suggestions. Direct standalone invoice upload support is prepared for the next step.
+                    </Alert>
                   </Stack>
                 </Paper>
               ) : null}
@@ -1082,11 +1183,48 @@ const AddAsset = () => {
           setSelectedSuggestion(null);
           setSelectedAssetId(null);
           setUploadedDocuments([]);
+          setReminderPromptOpen(false);
+          setDeferNextSuggestionPrompt(false);
+          setLastReminderCount(0);
           setNextSuggestionPromptOpen(false);
           setParsingMessage("");
         }}
         onSave={handleSaveAsset}
       />
+
+      <Dialog open={reminderPromptOpen} onClose={() => undefined} fullWidth maxWidth="xs">
+        <DialogTitle>Set Reminder Alerts?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {lastReminderCount} reminder{lastReminderCount === 1 ? " has" : "s have"} been prepared for this asset lifecycle. Open reminders now to review or edit them?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setReminderPromptOpen(false);
+              setLastReminderCount(0);
+              if (deferNextSuggestionPrompt) {
+                setNextSuggestionPromptOpen(true);
+              }
+              setDeferNextSuggestionPrompt(false);
+            }}
+          >
+            Later
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setReminderPromptOpen(false);
+              setDeferNextSuggestionPrompt(false);
+              setLastReminderCount(0);
+              navigate("/reminders");
+            }}
+          >
+            Open Reminders
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={nextSuggestionPromptOpen} onClose={() => undefined} fullWidth maxWidth="xs">
         <DialogTitle>Asset added successfully</DialogTitle>

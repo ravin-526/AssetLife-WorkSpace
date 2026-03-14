@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
 
-import { connectGmail, disconnectGmail, getGmailStatus, syncEmails } from "../services/gmail.ts";
+import { connectMailbox, disconnectMailbox, getMailboxStatus, syncMailboxEmails } from "../services/gmail.ts";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
+import useUserStore from "../store/userStore.ts";
+
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const EmailIntegrations = () => {
+  const profileEmail = String(useUserStore((state) => state.user?.email ?? "")).trim().toLowerCase();
   const [connected, setConnected] = useState(false);
+  const [mailboxType, setMailboxType] = useState("gmail");
   const [emailAddress, setEmailAddress] = useState<string>("");
+  const [manualEmail, setManualEmail] = useState<string>("");
   const [lastSyncAt, setLastSyncAt] = useState<string>("");
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -18,9 +25,13 @@ const EmailIntegrations = () => {
   const [scanDays, setScanDays] = useState(10);
 
   const loadStatus = async () => {
-    const status = await getGmailStatus();
+    const status = await getMailboxStatus();
     setConnected(status.connected);
+    setMailboxType(status.mailbox_type ?? "gmail");
     setEmailAddress(status.email_address ?? "");
+    if (!status.connected) {
+      setManualEmail(status.email_address ?? profileEmail);
+    }
     setLastSyncAt(status.last_sync_at ?? "");
   };
 
@@ -33,19 +44,19 @@ const EmailIntegrations = () => {
         const callbackMessage = params.get("message");
 
         if (status === "connected") {
-          setMessage("Gmail connected successfully. You can now scan your emails for asset invoices.");
+          setMessage("Mailbox connected successfully. You can now scan your emails for asset invoices.");
         }
         if (status === "error") {
-          setError(callbackMessage || "Failed to connect Gmail");
+          setError(callbackMessage || "Failed to connect mailbox");
         }
 
         if (status) {
-          window.history.replaceState({}, "", "/assets/import-gmail");
+          window.history.replaceState({}, "", "/assets/add?method=email_sync");
         }
 
         await loadStatus();
       } catch (requestError: unknown) {
-        setError(requestError instanceof Error ? requestError.message : "Failed to load Gmail integration status");
+        setError(requestError instanceof Error ? requestError.message : "Failed to load mailbox integration status");
       } finally {
         setLoading(false);
       }
@@ -57,11 +68,20 @@ const EmailIntegrations = () => {
   const handleConnect = async () => {
     try {
       setError("");
+      const candidateEmail = profileEmail || manualEmail.trim().toLowerCase();
+      if (!candidateEmail) {
+        setError("Please enter an email to connect your mailbox.");
+        return;
+      }
+      if (!emailRegex.test(candidateEmail)) {
+        setError("Please enter a valid email address.");
+        return;
+      }
       setLoading(true);
-      const response = await connectGmail();
+      const response = await connectMailbox(candidateEmail);
       window.location.href = response.auth_url;
     } catch (requestError: unknown) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to start Gmail connection");
+      setError(requestError instanceof Error ? requestError.message : "Failed to start mailbox connection");
     } finally {
       setLoading(false);
     }
@@ -71,11 +91,11 @@ const EmailIntegrations = () => {
     try {
       setError("");
       setLoading(true);
-      await disconnectGmail();
+      await disconnectMailbox();
       await loadStatus();
-      setMessage("Gmail account disconnected.");
+      setMessage("Mailbox disconnected.");
     } catch (requestError: unknown) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to disconnect Gmail");
+      setError(requestError instanceof Error ? requestError.message : "Failed to disconnect mailbox");
     } finally {
       setLoading(false);
     }
@@ -86,13 +106,13 @@ const EmailIntegrations = () => {
       setError("");
       setMessage("");
       setSyncing(true);
-      const response = await syncEmails(scanDays, 200);
+      const response = await syncMailboxEmails(scanDays, 200);
       await loadStatus();
       setMessage(
         `Sync completed. Scanned ${response.scanned} emails, detected ${response.purchase_emails_detected} purchase emails, and created ${response.created_suggestions} suggestions.`
       );
     } catch (requestError: unknown) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to sync Gmail emails");
+      setError(requestError instanceof Error ? requestError.message : "Failed to sync mailbox emails");
     } finally {
       setSyncing(false);
     }
@@ -112,7 +132,7 @@ const EmailIntegrations = () => {
             <div className="grid align-items-center">
               <div className="col-12 md:col-6">
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body1">Gmail</Typography>
+                  <Typography variant="body1">Mailbox ({mailboxType.toUpperCase()})</Typography>
                   <Chip label={connected ? "Connected" : "Not Connected"} color={connected ? "success" : "default"} />
                 </Stack>
               </div>
@@ -127,6 +147,29 @@ const EmailIntegrations = () => {
                 ) : null}
               </div>
             </div>
+
+            {!connected && !profileEmail ? (
+              <div className="grid">
+                <div className="col-12 md:col-8 lg:col-6">
+                  <TextField
+                    label="Mailbox Email"
+                    value={manualEmail}
+                    onChange={(event) => setManualEmail(event.target.value)}
+                    size="small"
+                    type="email"
+                    fullWidth
+                    disabled={loading || syncing}
+                    helperText="Enter the email to use for mailbox OAuth"
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {!connected && profileEmail ? (
+              <Typography variant="body2" color="text.secondary">
+                Using profile email: {profileEmail}
+              </Typography>
+            ) : null}
 
           {syncing ? (
             <Paper variant="outlined" sx={{ p: 2, bgcolor: "action.hover" }}>
@@ -166,10 +209,10 @@ const EmailIntegrations = () => {
 
             <div className="grid">
               <div className="col-12 md:col-4">
-                <Button variant="contained" onClick={handleConnect} disabled={connected || loading || syncing} fullWidth>Connect Gmail</Button>
+                <Button variant="contained" onClick={handleConnect} disabled={connected || loading || syncing} fullWidth>Connect Mailbox</Button>
               </div>
               <div className="col-12 md:col-4">
-                <Button variant="outlined" onClick={handleDisconnect} disabled={!connected || loading || syncing} fullWidth>Disconnect Gmail</Button>
+                <Button variant="outlined" onClick={handleDisconnect} disabled={!connected || loading || syncing} fullWidth>Disconnect</Button>
               </div>
               <div className="col-12 md:col-4">
                 <Button variant="contained" onClick={handleSync} disabled={!connected || loading || syncing} fullWidth>
