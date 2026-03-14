@@ -14,4 +14,5 @@ build/
 
 webapp/node_modules/
 webapp/node_modules/.cache/
-backend/uploads/
+backend/uploads/backend/.env
+backend/.env
