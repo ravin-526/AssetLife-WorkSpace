@@ -55,8 +55,6 @@ import {
   syncMailboxEmails,
 } from "../services/gmail.ts";
 
-type WizardSource = "gmail" | "qr" | "invoice" | "excel" | "manual";
-
 const Assets = () => {
   const navigate = useNavigate();
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -66,8 +64,6 @@ const Assets = () => {
   const [loadingActions, setLoadingActions] = useState<Record<string, boolean>>({});
   const [parsingSuggestionId, setParsingSuggestionId] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [selectedSource, setSelectedSource] = useState<WizardSource>("gmail");
   const [mailFiltersExpanded, setMailFiltersExpanded] = useState(true);
   const [mailboxConnected, setMailboxConnected] = useState(false);
   const [mailboxEmail, setMailboxEmail] = useState("");
@@ -664,17 +660,10 @@ const Assets = () => {
     setExportAnchorEl(null);
   };
 
-  const handleStartWizard = () => {
-    const methodMap: Record<WizardSource, string> = {
-      gmail: "email_sync",
-      qr: "barcode_qr",
-      invoice: "invoice_upload",
-      excel: "excel_upload",
-      manual: "manual_entry",
-    };
-    const method = methodMap[selectedSource] || "email_sync";
-    setWizardOpen(false);
-    navigate(`/assets/add?method=${method}`);
+  // Route directly to the dedicated Add Asset page so it uses the existing page layout
+  // instead of opening any Add Asset popup/wizard from the Assets screen.
+  const handleAddAssetNavigation = () => {
+    navigate("/assets/add");
   };
 
   return (
@@ -692,7 +681,8 @@ const Assets = () => {
             <Typography variant="h4">Assets</Typography>
           </div>
           <div className="col-12 md:col-6 flex md:justify-content-end">
-            <Button variant="contained" onClick={() => setWizardOpen(true)}>Add Asset</Button>
+            {/* Direct page navigation keeps Add Asset UX in AddAsset.tsx and avoids modal flow here. */}
+            <Button variant="contained" onClick={handleAddAssetNavigation}>Add Asset</Button>
           </div>
         </div>
       </Box>
@@ -1058,34 +1048,6 @@ const Assets = () => {
           </Box>
         </Box>
       </Drawer>
-
-      <Dialog open={wizardOpen} onClose={() => setWizardOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Add Asset Wizard</DialogTitle>
-        <DialogContent>
-          <Stack spacing={1.5} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Choose how you want to add assets.
-            </Typography>
-            <TextField
-              select
-              label="Select Method"
-              value={selectedSource}
-              onChange={(event) => setSelectedSource(event.target.value as WizardSource)}
-              fullWidth
-            >
-              <MenuItem value="gmail">Sync from Mailbox</MenuItem>
-              <MenuItem value="qr">QR / Bar Code Scan</MenuItem>
-              <MenuItem value="invoice">Invoice Upload</MenuItem>
-              <MenuItem value="excel">Excel Upload</MenuItem>
-              <MenuItem value="manual">Manual</MenuItem>
-            </TextField>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setWizardOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleStartWizard}>Continue</Button>
-        </DialogActions>
-      </Dialog>
 
     </Box>
   );

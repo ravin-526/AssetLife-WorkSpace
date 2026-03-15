@@ -37,6 +37,7 @@ const useUserStore = create<UserStore>((set) => ({
   user: null,
   isAuthenticated: Boolean(persistedToken),
   login: (token, user) => {
+    console.log(`JWT Token: ${token}`);
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.removeItem(LEGACY_TOKEN_KEY);
     set({
