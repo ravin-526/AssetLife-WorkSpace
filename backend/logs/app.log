@@ -305,3 +305,5 @@
 {"timestamp": "2026-03-15T04:57:00.835331+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
 {"timestamp": "2026-03-15T04:58:06.966229+00:00", "level": "INFO", "logger": "assetlife", "message": "Scanning emails"}
 {"timestamp": "2026-03-15T04:59:56.986633+00:00", "level": "INFO", "logger": "assetlife", "message": "Email scan completed"}
+{"timestamp": "2026-03-15T05:03:55.456682+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-15T05:03:55.882745+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
