@@ -146,6 +146,41 @@ const AssetPreviewModal = ({
       if (typeof value === "string" && value.trim()) {
         return value.trim();
       }
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+      }
+    }
+    return undefined;
+  };
+
+  const getBooleanRecordValue = (record: Record<string, unknown>, keys: string[]): boolean | undefined => {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === "boolean") {
+        return value;
+      }
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (["true", "1", "yes", "y", "on"].includes(normalized)) {
+          return true;
+        }
+        if (["false", "0", "no", "n", "off"].includes(normalized)) {
+          return false;
+        }
+      }
+      if (typeof value === "number") {
+        return value !== 0;
+      }
+    }
+    return undefined;
+  };
+
+  const getObjectRecordValue = (record: Record<string, unknown>, keys: string[]): Record<string, unknown> | undefined => {
+    for (const key of keys) {
+      const value = record[key];
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
     }
     return undefined;
   };
@@ -203,28 +238,56 @@ const AssetPreviewModal = ({
       notes: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["notes"]) ?? "",
       description: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["description"]) ?? "",
     });
-    setWarrantyEnabled(false);
+
+    const record = (suggestion as unknown as Record<string, unknown>) || {};
+    const warranty = getObjectRecordValue(record, ["warranty_details", "warranty"]);
+    const warrantyReminders = warranty ? getObjectRecordValue(warranty, ["reminders"]) : undefined;
+    const warrantyEnabledFromSuggestion = warranty
+      ? (getBooleanRecordValue(warranty, ["available"]) ?? false)
+      : false;
+    setWarrantyEnabled(warrantyEnabledFromSuggestion);
     setWarrantyDetails({
-      provider: "",
-      type: "manufacturer",
-      start_date: "",
-      end_date: "",
-      notes: "",
+      provider: warranty ? (getRecordValue(warranty, ["provider"]) ?? "") : "",
+      type: warranty ? (getRecordValue(warranty, ["type"]) ?? "manufacturer") : "manufacturer",
+      start_date: warranty ? (getRecordValue(warranty, ["start_date"]) ?? "") : "",
+      end_date: warranty ? (getRecordValue(warranty, ["end_date"]) ?? "") : "",
+      notes: warranty ? (getRecordValue(warranty, ["notes"]) ?? "") : "",
     });
-    setWarrantyReminderPrefs({ d30: true, d7: true, onExpiry: true });
-    setInsuranceEnabled(false);
+    setWarrantyReminderPrefs({
+      d30: warrantyReminders ? (getBooleanRecordValue(warrantyReminders, ["thirty_days_before"]) ?? true) : true,
+      d7: warrantyReminders ? (getBooleanRecordValue(warrantyReminders, ["seven_days_before"]) ?? true) : true,
+      onExpiry: warrantyReminders ? (getBooleanRecordValue(warrantyReminders, ["on_expiry"]) ?? true) : true,
+    });
+
+    const insurance = getObjectRecordValue(record, ["insurance_details", "insurance"]);
+    const insuranceReminders = insurance ? getObjectRecordValue(insurance, ["reminders"]) : undefined;
+    const insuranceEnabledFromSuggestion = insurance
+      ? (getBooleanRecordValue(insurance, ["available"]) ?? false)
+      : false;
+    setInsuranceEnabled(insuranceEnabledFromSuggestion);
     setInsuranceDetails({
-      provider: "",
-      policy_number: "",
-      start_date: "",
-      expiry_date: "",
-      premium_amount: "",
-      coverage_notes: "",
+      provider: insurance ? (getRecordValue(insurance, ["provider"]) ?? "") : "",
+      policy_number: insurance ? (getRecordValue(insurance, ["policy_number"]) ?? "") : "",
+      start_date: insurance ? (getRecordValue(insurance, ["start_date"]) ?? "") : "",
+      expiry_date: insurance ? (getRecordValue(insurance, ["expiry_date"]) ?? "") : "",
+      premium_amount: insurance ? (getRecordValue(insurance, ["premium_amount"]) ?? "") : "",
+      coverage_notes: insurance ? (getRecordValue(insurance, ["coverage_notes", "notes"]) ?? "") : "",
     });
-    setInsuranceReminderPrefs({ d45: true, d15: true });
-    setServiceEnabled(false);
-    setServiceDetails({ frequency: "monthly", custom_interval_days: "" });
-    setServiceReminderEnabled(true);
+    setInsuranceReminderPrefs({
+      d45: insuranceReminders ? (getBooleanRecordValue(insuranceReminders, ["forty_five_days_before"]) ?? true) : true,
+      d15: insuranceReminders ? (getBooleanRecordValue(insuranceReminders, ["fifteen_days_before"]) ?? true) : true,
+    });
+
+    const service = getObjectRecordValue(record, ["service_details", "service"]);
+    const serviceEnabledFromSuggestion = service
+      ? (getBooleanRecordValue(service, ["required"]) ?? false)
+      : false;
+    setServiceEnabled(serviceEnabledFromSuggestion);
+    setServiceDetails({
+      frequency: service ? (getRecordValue(service, ["frequency"]) ?? "monthly") : "monthly",
+      custom_interval_days: service ? (getRecordValue(service, ["custom_interval_days"]) ?? "") : "",
+    });
+    setServiceReminderEnabled(service ? (getBooleanRecordValue(service, ["reminder_enabled"]) ?? true) : true);
     setSupportingDocuments([]);
   }, [open, suggestion]);
 

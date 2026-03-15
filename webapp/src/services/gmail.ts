@@ -63,7 +63,28 @@ export type AssetSuggestion = {
   attachment_filename?: string;
   attachment_mime_type?: string;
   already_added: boolean;
+  asset_id?: string;
+  category?: string;
+  subcategory?: string;
+  serial_number?: string;
+  model_number?: string;
+  invoice_number?: string;
+  description?: string;
+  notes?: string;
+  location?: string;
+  assigned_user?: string;
+  warranty_details?: Record<string, unknown> | null;
+  insurance_details?: Record<string, unknown> | null;
+  service_details?: Record<string, unknown> | null;
   created_at: string;
+};
+
+export type ExcelUploadResponse = {
+  file_name?: string;
+  total_rows: number;
+  parsed_rows: number;
+  skipped_rows: Array<{ row_number: number; reason: string }>;
+  suggestions: AssetSuggestion[];
 };
 
 export type SuggestionActionResponse = {
@@ -402,4 +423,26 @@ export const fetchAssetDocumentBlob = async (assetId: string, documentId: string
     responseType: "blob",
   });
   return response.data as Blob;
+};
+
+export const downloadAssetExcelTemplate = async (): Promise<Blob> => {
+  const headers = requireAuthHeader();
+  const response = await api.get("/api/assets/excel/template", {
+    headers,
+    responseType: "blob",
+  });
+  return response.data as Blob;
+};
+
+export const uploadAssetExcelFile = async (file: File): Promise<ExcelUploadResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await api.post<ExcelUploadResponse>("/api/assets/excel/upload", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+
+  return response.data;
 };

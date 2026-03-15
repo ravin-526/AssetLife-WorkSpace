@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GmailConnectResponse(BaseModel):
@@ -58,7 +58,20 @@ class SuggestionResponse(BaseModel):
     attachment_mime_type: str | None = None
     action_options: list[str] = Field(default_factory=lambda: ["add", "skip"])
     already_added: bool = False
+    asset_id: str | None = None
     created_at: datetime
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        return text or "new"
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def normalize_source(cls, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        return text or "gmail"
 
 
 class GmailSyncResponse(BaseModel):
@@ -76,6 +89,38 @@ class GmailSyncResponse(BaseModel):
     skipped_duplicates: int
     assets_added_by_user: int = 0
     suggestions: list[SuggestionResponse] = Field(default_factory=list)
+
+    @field_validator("sync_status", mode="before")
+    @classmethod
+    def normalize_sync_status(cls, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        return text or "completed"
+
+    @model_validator(mode="after")
+    def normalize_counts(self) -> "GmailSyncResponse":
+        for field_name in [
+            "scanned",
+            "emails_scanned",
+            "purchase_emails_detected",
+            "invoice_emails",
+            "attachments_detected",
+            "attachments_found",
+            "attachments_downloaded",
+            "attachments_processed",
+            "created_suggestions",
+            "assets_detected",
+            "skipped_duplicates",
+            "assets_added_by_user",
+        ]:
+            value = getattr(self, field_name)
+            if value < 0:
+                setattr(self, field_name, 0)
+
+        if self.scanned <= 0 and self.emails_scanned > 0:
+            self.scanned = self.emails_scanned
+        if self.emails_scanned <= 0:
+            self.emails_scanned = self.scanned
+        return self
 
 
 class EmailScanResponse(BaseModel):

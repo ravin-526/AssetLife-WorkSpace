@@ -1,10 +1,13 @@
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook, load_workbook
 
 from app.core.security import get_current_user
 from app.db.mongo import get_db
@@ -15,6 +18,428 @@ UPLOAD_ROOT = Path("backend/uploads")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 DOC_ROOT = UPLOAD_ROOT / "documents"
 DOC_ROOT.mkdir(parents=True, exist_ok=True)
+
+EXCEL_TEMPLATE_COLUMNS = [
+    "product_name",
+    "brand",
+    "vendor",
+    "price",
+    "purchase_date",
+    "category",
+    "subcategory",
+    "serial_number",
+    "model_number",
+    "invoice_number",
+    "description",
+    "notes",
+    "location",
+    "assigned_user",
+    "warranty_available",
+    "warranty_provider",
+    "warranty_type",
+    "warranty_start_date",
+    "warranty_end_date",
+    "warranty_notes",
+    "warranty_reminder_30_days",
+    "warranty_reminder_7_days",
+    "warranty_reminder_on_expiry",
+    "insurance_available",
+    "insurance_provider",
+    "insurance_policy_number",
+    "insurance_start_date",
+    "insurance_expiry_date",
+    "insurance_premium_amount",
+    "insurance_coverage_notes",
+    "insurance_reminder_45_days",
+    "insurance_reminder_15_days",
+    "service_required",
+    "service_frequency",
+    "service_custom_interval_days",
+    "service_reminder_enabled",
+]
+
+EXCEL_TEMPLATE_SAMPLE_ROWS = [
+    [
+        "MacBook Pro 16",
+        "Apple",
+        "iStore",
+        249999,
+        "2024-01-12",
+        "Electronics",
+        "Laptop",
+        "MBP16-001",
+        "A2780",
+        "INV-APL-2024-001",
+        "Engineering laptop",
+        "Issued to design team",
+        "Bangalore HQ",
+        "Asha N",
+        "yes",
+        "Apple Care",
+        "manufacturer",
+        "2024-01-12",
+        "2027-01-11",
+        "3 year plan",
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "HDFC Ergo",
+        "POL-APL-9910",
+        "2024-01-12",
+        "2025-01-11",
+        12999,
+        "Accidental damage cover",
+        "yes",
+        "yes",
+        "yes",
+        "yearly",
+        "",
+        "yes",
+    ],
+    [
+        "Dell XPS 13",
+        "Dell",
+        "Dell Store",
+        145000,
+        "2024-02-03",
+        "Electronics",
+        "Laptop",
+        "DX13-7781",
+        "XPS-9315",
+        "INV-DEL-2024-013",
+        "Sales leadership laptop",
+        "",
+        "Mumbai Office",
+        "Rohit M",
+        "yes",
+        "Dell Warranty",
+        "extended",
+        "2024-02-03",
+        "2026-02-02",
+        "Extended coverage",
+        "yes",
+        "yes",
+        "yes",
+        "no",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "no",
+        "no",
+        "yes",
+        "half_yearly",
+        "",
+        "yes",
+    ],
+    [
+        "iPhone 15",
+        "Apple",
+        "Unicorn",
+        89900,
+        "2024-03-15",
+        "Electronics",
+        "Mobile",
+        "IPH15-9981",
+        "A3090",
+        "INV-APL-2024-089",
+        "Executive phone",
+        "Dual SIM setup",
+        "Chennai Branch",
+        "Priya S",
+        "yes",
+        "Apple Care+",
+        "manufacturer",
+        "2024-03-15",
+        "2026-03-14",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "Bajaj Allianz",
+        "POL-IPH-4401",
+        "2024-03-15",
+        "2025-03-14",
+        5500,
+        "Screen and theft cover",
+        "yes",
+        "yes",
+        "yes",
+        "yearly",
+        "",
+        "yes",
+    ],
+    [
+        "Canon EOS R8",
+        "Canon",
+        "PhotoWorld",
+        128500,
+        "2024-04-01",
+        "Electronics",
+        "Camera",
+        "CANR8-3002",
+        "EOS-R8",
+        "INV-CAN-2024-020",
+        "Content team camera",
+        "",
+        "Studio",
+        "Media Desk",
+        "yes",
+        "Canon India",
+        "manufacturer",
+        "2024-04-01",
+        "2026-03-31",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "no",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "no",
+        "no",
+        "yes",
+        "quarterly",
+        "",
+        "yes",
+    ],
+    [
+        "Samsung 55 TV",
+        "Samsung",
+        "Reliance Digital",
+        62999,
+        "2024-04-28",
+        "Electronics",
+        "Television",
+        "SAMTV55-773",
+        "UA55AU7700",
+        "INV-SAM-2024-114",
+        "Meeting room display",
+        "Wall mounted",
+        "Pune Office",
+        "Facilities",
+        "yes",
+        "Samsung Care",
+        "extended",
+        "2024-04-28",
+        "2027-04-27",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "ICICI Lombard",
+        "POL-TV-7782",
+        "2024-04-28",
+        "2025-04-27",
+        3800,
+        "Power surge cover",
+        "yes",
+        "yes",
+        "yes",
+        "yearly",
+        "",
+        "yes",
+    ],
+    [
+        "HP LaserJet Pro",
+        "HP",
+        "HP Store",
+        32990,
+        "2024-05-06",
+        "Electronics",
+        "Printer",
+        "HPLJ-2190",
+        "MFP-4104",
+        "INV-HP-2024-045",
+        "Admin floor printer",
+        "",
+        "Hyderabad Office",
+        "Admin Team",
+        "yes",
+        "HP",
+        "manufacturer",
+        "2024-05-06",
+        "2025-05-05",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "no",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "no",
+        "no",
+        "yes",
+        "quarterly",
+        "",
+        "yes",
+    ],
+    [
+        "Daikin Split AC",
+        "Daikin",
+        "Cooling Hub",
+        48750,
+        "2024-05-22",
+        "Appliances",
+        "Air Conditioner",
+        "DKAC-8804",
+        "FTKF50",
+        "INV-DKN-2024-061",
+        "Server room AC",
+        "24x7 operation",
+        "Data Center",
+        "Infra Team",
+        "yes",
+        "Daikin",
+        "manufacturer",
+        "2024-05-22",
+        "2026-05-21",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "Tata AIG",
+        "POL-AC-9012",
+        "2024-05-22",
+        "2025-05-21",
+        2750,
+        "Compressor cover",
+        "yes",
+        "yes",
+        "yes",
+        "half_yearly",
+        "",
+        "yes",
+    ],
+    [
+        "Godrej Refrigerator",
+        "Godrej",
+        "HomeTown",
+        28990,
+        "2024-06-02",
+        "Appliances",
+        "Refrigerator",
+        "GDRF-5501",
+        "RT-EON",
+        "INV-GOD-2024-033",
+        "Pantry refrigerator",
+        "",
+        "Kolkata Office",
+        "Office Ops",
+        "yes",
+        "Godrej Care",
+        "manufacturer",
+        "2024-06-02",
+        "2027-06-01",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "no",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "no",
+        "no",
+        "yes",
+        "yearly",
+        "",
+        "yes",
+    ],
+    [
+        "Bosch Drill Kit",
+        "Bosch",
+        "Tool Mart",
+        14999,
+        "2024-06-19",
+        "Tools",
+        "Power Tools",
+        "BSCH-DR-118",
+        "GSB-13",
+        "INV-BOS-2024-018",
+        "Maintenance toolkit",
+        "Includes bits set",
+        "Maintenance Room",
+        "Facilities",
+        "yes",
+        "Bosch",
+        "manufacturer",
+        "2024-06-19",
+        "2026-06-18",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "no",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "no",
+        "no",
+        "yes",
+        "custom",
+        120,
+        "yes",
+    ],
+    [
+        "Lenovo ThinkPad E14",
+        "Lenovo",
+        "Lenovo Store",
+        78999,
+        "2024-07-03",
+        "Electronics",
+        "Laptop",
+        "LTP-E14-562",
+        "ThinkPad-E14",
+        "INV-LEN-2024-072",
+        "HR team laptop",
+        "",
+        "Delhi Office",
+        "Kiran P",
+        "yes",
+        "Lenovo",
+        "manufacturer",
+        "2024-07-03",
+        "2027-07-02",
+        "",
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "New India Assurance",
+        "POL-LEN-3391",
+        "2024-07-03",
+        "2025-07-02",
+        4100,
+        "Transit damage",
+        "yes",
+        "yes",
+        "yes",
+        "yearly",
+        "",
+        "yes",
+    ],
+]
 
 
 def _to_asset(item: dict[str, Any]) -> dict[str, Any]:
@@ -66,6 +491,128 @@ def _text(value: Any) -> str:
 
 def _normalized_lower(value: Any) -> str:
     return _text(value).lower()
+
+
+def _is_truthy(value: Any) -> bool:
+    normalized = _normalized_lower(value)
+    return normalized in {"true", "1", "yes", "y", "on"}
+
+
+def _to_number(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _to_int(value: Any) -> int | None:
+    number = _to_number(value)
+    if number is None:
+        return None
+    return int(number)
+
+
+def _to_iso_date_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+        return parsed.date().isoformat()
+    except ValueError:
+        return text
+
+
+def _to_excel_suggestion(row: dict[str, Any], row_number: int, duplicate_asset_id: str | None) -> dict[str, Any]:
+    warranty_available = _is_truthy(row.get("warranty_available"))
+    insurance_available = _is_truthy(row.get("insurance_available"))
+    service_required = _is_truthy(row.get("service_required"))
+
+    warranty = {
+        "available": warranty_available,
+        "provider": _text(row.get("warranty_provider")) or None,
+        "type": _text(row.get("warranty_type")) or "manufacturer",
+        "start_date": _to_iso_date_text(row.get("warranty_start_date")),
+        "end_date": _to_iso_date_text(row.get("warranty_end_date")),
+        "notes": _text(row.get("warranty_notes")) or None,
+        "reminders": {
+            "thirty_days_before": _is_truthy(row.get("warranty_reminder_30_days")),
+            "seven_days_before": _is_truthy(row.get("warranty_reminder_7_days")),
+            "on_expiry": _is_truthy(row.get("warranty_reminder_on_expiry")),
+        },
+    }
+
+    insurance = {
+        "available": insurance_available,
+        "provider": _text(row.get("insurance_provider")) or None,
+        "policy_number": _text(row.get("insurance_policy_number")) or None,
+        "start_date": _to_iso_date_text(row.get("insurance_start_date")),
+        "expiry_date": _to_iso_date_text(row.get("insurance_expiry_date")),
+        "premium_amount": _to_number(row.get("insurance_premium_amount")),
+        "coverage_notes": _text(row.get("insurance_coverage_notes")) or None,
+        "reminders": {
+            "forty_five_days_before": _is_truthy(row.get("insurance_reminder_45_days")),
+            "fifteen_days_before": _is_truthy(row.get("insurance_reminder_15_days")),
+        },
+    }
+
+    service = {
+        "required": service_required,
+        "frequency": _text(row.get("service_frequency")) or "monthly",
+        "custom_interval_days": _to_int(row.get("service_custom_interval_days")),
+        "reminder_enabled": _is_truthy(row.get("service_reminder_enabled")),
+    }
+
+    now = datetime.now(timezone.utc)
+    status = "duplicate" if duplicate_asset_id else "new"
+    return {
+        "id": f"excel-row-{row_number}",
+        "product_name": _text(row.get("product_name")) or f"Asset Row {row_number}",
+        "brand": _text(row.get("brand")) or None,
+        "vendor": _text(row.get("vendor")) or None,
+        "price": _to_number(row.get("price")),
+        "purchase_date": _to_iso_date_text(row.get("purchase_date")),
+        "sender": "Excel Upload",
+        "subject": "Bulk Asset Import",
+        "email_date": now.isoformat(),
+        "quantity": 1,
+        "source": "excel",
+        "status": status,
+        "warranty": _text(row.get("warranty_notes")) or None,
+        "email_message_id": f"excel-upload-{row_number}",
+        "attachment_filename": None,
+        "attachment_mime_type": None,
+        "action_options": ["add", "skip"],
+        "already_added": bool(duplicate_asset_id),
+        "created_at": now.isoformat(),
+        "category": _text(row.get("category")) or "Other",
+        "subcategory": _text(row.get("subcategory")) or "Custom Asset",
+        "serial_number": _text(row.get("serial_number")) or None,
+        "model_number": _text(row.get("model_number")) or None,
+        "invoice_number": _text(row.get("invoice_number")) or None,
+        "description": _text(row.get("description")) or None,
+        "notes": _text(row.get("notes")) or None,
+        "location": _text(row.get("location")) or None,
+        "assigned_user": _text(row.get("assigned_user")) or None,
+        "warranty_details": warranty if warranty_available else None,
+        "insurance_details": insurance if insurance_available else None,
+        "service_details": service if service_required else None,
+        "asset_id": duplicate_asset_id,
+    }
 
 
 def _lifecycle_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -187,6 +734,100 @@ async def _find_duplicate_asset(payload: dict[str, Any], user_id: str, db) -> di
             return duplicate
 
     return None
+
+
+@router.get("/excel/template")
+async def download_excel_template(current_user: dict[str, str] = Depends(get_current_user)):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Assets"
+    sheet.append(EXCEL_TEMPLATE_COLUMNS)
+
+    for row in EXCEL_TEMPLATE_SAMPLE_ROWS:
+        sheet.append(row)
+
+    payload = BytesIO()
+    workbook.save(payload)
+    payload.seek(0)
+
+    return StreamingResponse(
+        BytesIO(payload.getvalue()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="asset_upload_template.xlsx"'},
+    )
+
+
+@router.post("/excel/upload")
+async def upload_excel_file(
+    file: UploadFile = File(...),
+    current_user: dict[str, str] = Depends(get_current_user),
+    db=Depends(get_db),
+) -> dict[str, Any]:
+    file_name = (file.filename or "").lower()
+    if not file_name.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are supported")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    try:
+        workbook = load_workbook(filename=BytesIO(content), data_only=True)
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="Invalid Excel file") from error
+
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    if not rows:
+        raise HTTPException(status_code=400, detail="Excel sheet is empty")
+
+    headers = [_normalized_lower(header) for header in (rows[0] or [])]
+    missing_headers = [column for column in EXCEL_TEMPLATE_COLUMNS if column not in headers]
+    if missing_headers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Template columns missing: {', '.join(missing_headers)}",
+        )
+
+    header_index = {column: headers.index(column) for column in EXCEL_TEMPLATE_COLUMNS}
+    suggestions: list[dict[str, Any]] = []
+    skipped_rows: list[dict[str, Any]] = []
+
+    for index, excel_row in enumerate(rows[1:], start=2):
+        row_map: dict[str, Any] = {}
+        for column in EXCEL_TEMPLATE_COLUMNS:
+            position = header_index[column]
+            row_map[column] = excel_row[position] if position < len(excel_row) else None
+
+        if not any(_text(value) for value in row_map.values()):
+            continue
+
+        if not _text(row_map.get("product_name")):
+            skipped_rows.append({"row_number": index, "reason": "product_name is required"})
+            continue
+
+        duplicate = await _find_duplicate_asset(
+            {
+                "name": row_map.get("product_name"),
+                "vendor": row_map.get("vendor"),
+                "purchase_date": _to_iso_date_text(row_map.get("purchase_date")),
+                "invoice_number": row_map.get("invoice_number"),
+            },
+            current_user["id"],
+            db,
+        )
+
+        duplicate_asset_id = str(duplicate.get("_id")) if duplicate else None
+        suggestion = _to_excel_suggestion(row_map, index, duplicate_asset_id)
+        suggestions.append(suggestion)
+
+    return {
+        "file_name": file.filename,
+        "total_rows": max(len(rows) - 1, 0),
+        "parsed_rows": len(suggestions),
+        "skipped_rows": skipped_rows,
+        "suggestions": suggestions,
+    }
 
 
 @router.get("")

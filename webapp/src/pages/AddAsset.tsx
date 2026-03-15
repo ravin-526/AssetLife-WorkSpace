@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -12,6 +12,7 @@ import {
   Fade,
   LinearProgress,
   MenuItem,
+  Pagination,
   Paper,
   Stack,
   TextField,
@@ -21,6 +22,7 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+import DownloadIcon from "@mui/icons-material/Download";
 import { useNavigate } from "react-router-dom";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
@@ -28,10 +30,12 @@ import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import {
   AssetLifecyclePayload,
   AssetSuggestion,
+  ExcelUploadResponse,
   UploadedAssetDocument,
   clearTemporarySuggestions,
   connectMailbox,
   createAsset,
+  downloadAssetExcelTemplate,
   deleteAssetDocument,
   disconnectMailbox,
   getAssetDocuments,
@@ -40,6 +44,7 @@ import {
   parseSuggestionAttachment,
   rejectSuggestion,
   syncMailboxEmails,
+  uploadAssetExcelFile,
   uploadAssetDocuments,
 } from "../services/gmail.ts";
 
@@ -104,6 +109,12 @@ const AddAsset = () => {
   const [message, setMessage] = useState("");
   const [selectedMethod, setSelectedMethod] = useState<AddAssetMethod>("email_sync");
   const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [excelUploadResult, setExcelUploadResult] = useState<ExcelUploadResponse | null>(null);
+  const [excelUploadLoading, setExcelUploadLoading] = useState(false);
+  const [excelTemplateLoading, setExcelTemplateLoading] = useState(false);
+  const [excelSearch, setExcelSearch] = useState("");
+  const [excelPage, setExcelPage] = useState(1);
+  const excelPageSize = 8;
   const [manualForm, setManualForm] = useState({
     name: "",
     category: "",
@@ -199,6 +210,13 @@ const AddAsset = () => {
       window.history.replaceState({}, "", "/assets/add");
     }
   }, []);
+
+  useEffect(() => {
+    if (selectedMethod !== "excel_upload") {
+      return;
+    }
+    setExcelPage(1);
+  }, [excelSearch, selectedMethod]);
 
   const handleConnectMailbox = async (emailOverride?: string) => {
     setActionLoading("connectMailbox", true);
@@ -441,6 +459,8 @@ const AddAsset = () => {
       return;
     }
 
+    const isExcelSuggestion = String(selectedSuggestion.source || "").toLowerCase() === "excel";
+
     try {
       setSaveLoading(true);
       setError("");
@@ -460,8 +480,8 @@ const AddAsset = () => {
         location: payload.location,
         assigned_user: payload.assigned_user,
         lifecycle_info: payload.lifecycle_info,
-        source: "gmail",
-        suggestion_id: selectedSuggestion.id,
+        source: isExcelSuggestion ? "excel" : "gmail",
+        suggestion_id: isExcelSuggestion ? undefined : selectedSuggestion.id,
       });
 
       setSelectedAssetId(createdAsset.id);
@@ -483,8 +503,41 @@ const AddAsset = () => {
             : item
         )
       );
+
+      if (isExcelSuggestion) {
+        setExcelUploadResult((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          return {
+            ...prev,
+            suggestions: prev.suggestions.map((item) =>
+              item.id === selectedSuggestion.id
+                ? {
+                    ...item,
+                    already_added: true,
+                    status: "added",
+                    asset_id: createdAsset.id,
+                  }
+                : item
+            ),
+          };
+        });
+      }
+
       setMessage("Asset added successfully");
       const reminderCount = Number(createdAsset.auto_reminders_created || 0);
+      if (isExcelSuggestion) {
+        setSelectedSuggestion(null);
+        setSelectedAssetId(null);
+        setUploadedDocuments([]);
+        if (reminderCount > 0) {
+          setLastReminderCount(reminderCount);
+          setReminderPromptOpen(true);
+        }
+        return;
+      }
+
       if (reminderCount > 0) {
         setLastReminderCount(reminderCount);
         setNextSuggestionPromptOpen(false);
@@ -578,18 +631,135 @@ const AddAsset = () => {
     }).format(price);
   };
 
+  const openBlobForDownload = (blob: Blob, fileName: string) => {
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(objectUrl);
+  };
+
+  const handleDownloadExcelTemplate = async () => {
+    try {
+      setExcelTemplateLoading(true);
+      setError("");
+      const blob = await downloadAssetExcelTemplate();
+      openBlobForDownload(blob, "asset_upload_template.xlsx");
+      setMessage("Excel template downloaded successfully.");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to download template");
+    } finally {
+      setExcelTemplateLoading(false);
+    }
+  };
+
+  const handlePrepareExcelSave = async (suggestion: AssetSuggestion) => {
+    setError("");
+    setParsingMessage("");
+    setSelectedAssetId(null);
+    setUploadedDocuments([]);
+    setSelectedSuggestion(suggestion);
+  };
+
+  const handleExportExcelSuggestions = () => {
+    const rows = (excelUploadResult?.suggestions || []).filter((item) => {
+      const query = excelSearch.trim().toLowerCase();
+      if (!query) {
+        return true;
+      }
+      return [
+        item.product_name,
+        item.vendor,
+        item.brand,
+        item.category,
+        item.subcategory,
+        item.status,
+      ]
+        .map((value) => String(value || "").toLowerCase())
+        .some((value) => value.includes(query));
+    });
+
+    const header = ["Product Name", "Vendor", "Price", "Purchase Date", "Category", "Subcategory", "Status"];
+    const data = rows.map((item) => [
+      item.product_name || "",
+      item.vendor || "",
+      item.price ?? "",
+      item.purchase_date || "",
+      item.category || "",
+      item.subcategory || "",
+      item.already_added ? "Added" : item.status || "New",
+    ]);
+
+    const csv = [header, ...data]
+      .map((line) => line.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    openBlobForDownload(new Blob([csv], { type: "text/csv;charset=utf-8" }), "excel_asset_preview.csv");
+  };
+
+  const handleExcelUpload = async () => {
+    if (!excelFile) {
+      return;
+    }
+
+    try {
+      setExcelUploadLoading(true);
+      setError("");
+      setMessage("");
+      const response = await uploadAssetExcelFile(excelFile);
+      setExcelUploadResult(response);
+      setExcelPage(1);
+      setSuggestions([]);
+      setSelectedSuggestion(null);
+      setMessage(`Excel parsed successfully. ${response.parsed_rows} row(s) ready.`);
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to upload Excel file");
+    } finally {
+      setExcelUploadLoading(false);
+    }
+  };
+
+  const filteredExcelSuggestions = useMemo(() => {
+    const query = excelSearch.trim().toLowerCase();
+    const source = excelUploadResult?.suggestions || [];
+    if (!query) {
+      return source;
+    }
+    return source.filter((item) => {
+      return [
+        item.product_name,
+        item.vendor,
+        item.brand,
+        item.category,
+        item.subcategory,
+        item.status,
+      ]
+        .map((value) => String(value || "").toLowerCase())
+        .some((value) => value.includes(query));
+    });
+  }, [excelSearch, excelUploadResult?.suggestions]);
+
+  const excelPageCount = Math.max(1, Math.ceil(filteredExcelSuggestions.length / excelPageSize));
+
+  useEffect(() => {
+    if (excelPage > excelPageCount) {
+      setExcelPage(excelPageCount);
+    }
+  }, [excelPage, excelPageCount]);
+
+  const pagedExcelSuggestions = useMemo(() => {
+    const startIndex = (excelPage - 1) * excelPageSize;
+    return filteredExcelSuggestions.slice(startIndex, startIndex + excelPageSize);
+  }, [excelPage, filteredExcelSuggestions]);
+
   const standardControlHeight = 36;
   const standardFieldSx = {
     "& .MuiInputBase-root": {
       height: standardControlHeight,
     },
-  };
-
-  const handleExcelUpload = () => {
-    if (!excelFile) {
-      return;
-    }
-    setMessage("Excel upload UI is ready. Processing will be enabled in the next phase.");
   };
 
   const handleManualSave = () => {
@@ -992,41 +1162,194 @@ const AddAsset = () => {
               ) : null}
 
               {selectedMethod === "excel_upload" ? (
-                <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
-                  <Stack spacing={2}>
-                    <Typography variant="h6">Upload Excel File</Typography>
-                    <div className="grid align-items-end">
-                      <div className="col-12 md:col-8 lg:col-6">
+                <Stack spacing={2.5}>
+                  <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+                    <Stack spacing={2}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+                        <Typography variant="h6">Upload Excel File</Typography>
                         <Button
-                          component="label"
                           variant="outlined"
-                          sx={{ height: standardControlHeight, justifyContent: "flex-start", width: "100%" }}
+                          startIcon={<DownloadIcon />}
+                          onClick={() => {
+                            void handleDownloadExcelTemplate();
+                          }}
+                          disabled={excelTemplateLoading}
+                          sx={{ height: standardControlHeight }}
                         >
-                          {excelFile ? excelFile.name : "Choose File"}
-                          <input
-                            type="file"
-                            accept=".xls,.xlsx"
-                            hidden
-                            onChange={(event) => {
-                              const file = event.target.files?.[0] ?? null;
-                              setExcelFile(file);
+                          {excelTemplateLoading ? "Preparing..." : "Download Template"}
+                        </Button>
+                      </Box>
+
+                      <div className="grid align-items-end">
+                        <div className="col-12 md:col-7 lg:col-6">
+                          <Button
+                            component="label"
+                            variant="outlined"
+                            sx={{ height: standardControlHeight, justifyContent: "flex-start", width: "100%" }}
+                          >
+                            {excelFile ? excelFile.name : "Choose .xlsx file"}
+                            <input
+                              type="file"
+                              accept=".xlsx"
+                              hidden
+                              onChange={(event) => {
+                                const file = event.target.files?.[0] ?? null;
+                                setExcelFile(file);
+                              }}
+                            />
+                          </Button>
+                        </div>
+                        <div className="col-12 md:col-5 lg:col-3">
+                          <Button
+                            variant="contained"
+                            onClick={() => {
+                              void handleExcelUpload();
                             }}
-                          />
-                        </Button>
+                            disabled={!excelFile || excelUploadLoading}
+                            sx={{ height: standardControlHeight, minWidth: 120 }}
+                            fullWidth
+                          >
+                            {excelUploadLoading ? "Uploading..." : "Upload and Parse"}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="col-12 md:col-4 lg:col-3">
-                        <Button
-                          variant="contained"
-                          onClick={handleExcelUpload}
-                          disabled={!excelFile}
-                          sx={{ height: standardControlHeight, minWidth: 120 }}
-                        >
-                          Upload
-                        </Button>
-                      </div>
-                    </div>
-                  </Stack>
-                </Paper>
+
+                      <Typography variant="body2" color="text.secondary">
+                        Template includes core fields and lifecycle columns for warranty, insurance, and service details.
+                      </Typography>
+
+                      {excelUploadResult ? (
+                        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+                          <Chip label={`Total Rows: ${excelUploadResult.total_rows}`} size="small" variant="outlined" />
+                          <Chip label={`Parsed: ${excelUploadResult.parsed_rows}`} size="small" color="primary" variant="outlined" />
+                          <Chip label={`Skipped: ${excelUploadResult.skipped_rows.length}`} size="small" variant="outlined" />
+                        </Stack>
+                      ) : null}
+
+                      {excelUploadResult && excelUploadResult.skipped_rows.length > 0 ? (
+                        <Alert severity="warning">
+                          {excelUploadResult.skipped_rows.length} row(s) were skipped. Example: row {excelUploadResult.skipped_rows[0]?.row_number} - {excelUploadResult.skipped_rows[0]?.reason}
+                        </Alert>
+                      ) : null}
+                    </Stack>
+                  </Paper>
+
+                  {excelUploadResult ? (
+                    <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                      <Stack spacing={1.5}>
+                        <Box sx={{ display: "flex", alignItems: { xs: "stretch", md: "center" }, justifyContent: "space-between", gap: 1.25, flexWrap: "wrap" }}>
+                          <Typography variant="h6">Excel Asset Preview</Typography>
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              variant="outlined"
+                              onClick={handleExportExcelSuggestions}
+                              disabled={!excelUploadResult.suggestions.length}
+                              sx={{ height: standardControlHeight }}
+                            >
+                              Export CSV
+                            </Button>
+                          </Stack>
+                        </Box>
+
+                        <TextField
+                          size="small"
+                          label="Search rows"
+                          value={excelSearch}
+                          onChange={(event) => setExcelSearch(event.target.value)}
+                          placeholder="Search by name, vendor, category, status"
+                          sx={{ maxWidth: 420 }}
+                        />
+
+                        {filteredExcelSuggestions.length > 0 ? (
+                          <>
+                            <Paper variant="outlined" sx={{ maxHeight: 420, overflowY: "auto", overflowX: "auto" }}>
+                              <Box sx={{ minWidth: 980 }}>
+                                <Box
+                                  sx={{
+                                    display: "grid",
+                                    gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1fr 1fr 1.1fr",
+                                    columnGap: 2,
+                                    px: 2,
+                                    py: 1.25,
+                                    bgcolor: "grey.100",
+                                    borderBottom: 1,
+                                    borderColor: "divider",
+                                    position: "sticky",
+                                    top: 0,
+                                    zIndex: 1,
+                                  }}
+                                >
+                                  <Typography variant="subtitle2">Product Name</Typography>
+                                  <Typography variant="subtitle2">Vendor</Typography>
+                                  <Typography variant="subtitle2">Price</Typography>
+                                  <Typography variant="subtitle2">Purchase Date</Typography>
+                                  <Typography variant="subtitle2">Category</Typography>
+                                  <Typography variant="subtitle2">Status</Typography>
+                                  <Typography variant="subtitle2">Action</Typography>
+                                </Box>
+
+                                {pagedExcelSuggestions.map((item) => {
+                                  const blocked = item.already_added || String(item.status || "").toLowerCase() === "duplicate";
+                                  return (
+                                    <Box
+                                      key={item.id}
+                                      sx={{
+                                        display: "grid",
+                                        gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1fr 1fr 1.1fr",
+                                        columnGap: 2,
+                                        alignItems: "center",
+                                        px: 2,
+                                        py: 1.1,
+                                        borderBottom: 1,
+                                        borderColor: "divider",
+                                      }}
+                                    >
+                                      <Typography variant="body2">{item.product_name || "-"}</Typography>
+                                      <Typography variant="body2">{item.vendor || "-"}</Typography>
+                                      <Typography variant="body2">{formatSuggestionPrice(item.price)}</Typography>
+                                      <Typography variant="body2">{item.purchase_date ? new Date(item.purchase_date).toLocaleDateString() : "-"}</Typography>
+                                      <Typography variant="body2">{item.category || "-"}</Typography>
+                                      <Chip
+                                        size="small"
+                                        label={item.already_added ? "Added" : String(item.status || "").toLowerCase() === "duplicate" ? "Duplicate" : "New"}
+                                        color={item.already_added ? "success" : String(item.status || "").toLowerCase() === "duplicate" ? "default" : "primary"}
+                                        variant={item.already_added || String(item.status || "").toLowerCase() === "duplicate" ? "filled" : "outlined"}
+                                      />
+                                      <Button
+                                        variant="outlined"
+                                        onClick={() => {
+                                          void handlePrepareExcelSave(item);
+                                        }}
+                                        disabled={blocked}
+                                        sx={{ height: standardControlHeight, minWidth: 82, px: 1.25 }}
+                                      >
+                                        {item.already_added ? "Added" : blocked ? "Blocked" : "Add"}
+                                      </Button>
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            </Paper>
+
+                            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                              <Pagination
+                                page={excelPage}
+                                count={excelPageCount}
+                                onChange={(_, page) => setExcelPage(page)}
+                                color="primary"
+                                size="small"
+                              />
+                            </Box>
+                          </>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            No rows matched your search.
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Paper>
+                  ) : null}
+                </Stack>
               ) : null}
 
               {selectedMethod === "invoice_upload" ? (
