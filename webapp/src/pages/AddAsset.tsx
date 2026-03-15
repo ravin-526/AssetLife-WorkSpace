@@ -833,6 +833,15 @@ const AddAsset = () => {
 
   const handleMethodChange = (method: AddAssetMethod) => {
     setSelectedMethod(method);
+
+    const params = new URLSearchParams(location.search);
+    params.set("method", method);
+    const nextUrl = `${location.pathname}?${params.toString()}`;
+    const currentUrl = `${location.pathname}${location.search || ""}`;
+    if (nextUrl !== currentUrl) {
+      navigate(nextUrl, { replace: true });
+    }
+
     if (method === "manual_entry") {
       handleStartManualEntry();
       return;
