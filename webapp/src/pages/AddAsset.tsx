@@ -23,7 +23,7 @@ import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import DownloadIcon from "@mui/icons-material/Download";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
@@ -71,6 +71,7 @@ const SYNC_ACTIVITY_STEPS = [
 
 const AddAsset = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [suggestions, setSuggestions] = useState<AssetSuggestion[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = useState<AssetSuggestion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,20 +116,36 @@ const AddAsset = () => {
   const [excelSearch, setExcelSearch] = useState("");
   const [excelPage, setExcelPage] = useState(1);
   const excelPageSize = 8;
-  const [manualForm, setManualForm] = useState({
-    name: "",
-    category: "",
-    vendor: "",
-    purchaseDate: "",
-    price: "",
-    warranty: "",
-  });
+  const [manualAddAnotherPromptOpen, setManualAddAnotherPromptOpen] = useState(false);
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
   useAutoDismissMessage(error, setError, { delay: 4000 });
 
   const setActionLoading = (action: string, isLoading: boolean) => {
     setLoadingActions((prev) => ({ ...prev, [action]: isLoading }));
+  };
+
+  const buildManualSuggestion = (): AssetSuggestion => {
+    const now = new Date().toISOString();
+    const seed = `manual-${Date.now()}`;
+    return {
+      id: seed,
+      product_name: "",
+      quantity: 1,
+      source: "manual",
+      status: "new",
+      email_message_id: seed,
+      already_added: false,
+      created_at: now,
+      category: "",
+      subcategory: "",
+      vendor: "",
+      brand: "",
+      notes: "",
+      description: "",
+      location: "",
+      assigned_user: "",
+    };
   };
 
   const isActionLoading = (action: string) => Boolean(loadingActions[action]);
@@ -191,10 +208,28 @@ const AddAsset = () => {
   }, [loadingActions]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const method = params.get("method");
-    if (method === "email_sync" || method === "invoice_upload" || method === "excel_upload" || method === "barcode_qr" || method === "manual_entry") {
+    const validMethod = method === "email_sync"
+      || method === "invoice_upload"
+      || method === "excel_upload"
+      || method === "barcode_qr"
+      || method === "manual_entry";
+
+    if (validMethod && method) {
       setSelectedMethod(method);
+      if (method === "manual_entry") {
+        setSelectedSuggestion((prev) => {
+          if (String(prev?.source || "").toLowerCase() === "manual") {
+            return prev;
+          }
+          return buildManualSuggestion();
+        });
+      } else if (String(selectedSuggestion?.source || "").toLowerCase() === "manual") {
+        setSelectedSuggestion(null);
+        setSelectedAssetId(null);
+        setUploadedDocuments([]);
+      }
     }
 
     const status = params.get("status");
@@ -206,10 +241,13 @@ const AddAsset = () => {
       setError(callbackMessage || "Failed to connect mailbox.");
     }
 
-    if (method || status || callbackMessage) {
-      window.history.replaceState({}, "", "/assets/add");
+    if (status || callbackMessage) {
+      params.delete("status");
+      params.delete("message");
+      const search = params.toString();
+      navigate(`${location.pathname}${search ? `?${search}` : ""}`, { replace: true });
     }
-  }, []);
+  }, [location.pathname, location.search, navigate, selectedSuggestion?.source]);
 
   useEffect(() => {
     if (selectedMethod !== "excel_upload") {
@@ -459,7 +497,9 @@ const AddAsset = () => {
       return;
     }
 
-    const isExcelSuggestion = String(selectedSuggestion.source || "").toLowerCase() === "excel";
+    const sourceType = String(selectedSuggestion.source || "").toLowerCase();
+    const isExcelSuggestion = sourceType === "excel";
+    const isManualSuggestion = sourceType === "manual";
 
     try {
       setSaveLoading(true);
@@ -480,8 +520,8 @@ const AddAsset = () => {
         location: payload.location,
         assigned_user: payload.assigned_user,
         lifecycle_info: payload.lifecycle_info,
-        source: isExcelSuggestion ? "excel" : "gmail",
-        suggestion_id: isExcelSuggestion ? undefined : selectedSuggestion.id,
+        source: isManualSuggestion ? "manual" : isExcelSuggestion ? "excel" : "gmail",
+        suggestion_id: isManualSuggestion || isExcelSuggestion ? undefined : selectedSuggestion.id,
       });
 
       setSelectedAssetId(createdAsset.id);
@@ -493,16 +533,18 @@ const AddAsset = () => {
         await loadUploadedDocuments(createdAsset.id);
       }
 
-      setSuggestions((prev) =>
-        prev.map((item) =>
-          item.id === selectedSuggestion.id
-            ? {
-                ...item,
-                already_added: true,
-              }
-            : item
-        )
-      );
+      if (!isManualSuggestion) {
+        setSuggestions((prev) =>
+          prev.map((item) =>
+            item.id === selectedSuggestion.id
+              ? {
+                  ...item,
+                  already_added: true,
+                }
+              : item
+          )
+        );
+      }
 
       if (isExcelSuggestion) {
         setExcelUploadResult((prev) => {
@@ -527,6 +569,14 @@ const AddAsset = () => {
 
       setMessage("Asset added successfully");
       const reminderCount = Number(createdAsset.auto_reminders_created || 0);
+      if (isManualSuggestion) {
+        setSelectedSuggestion(null);
+        setSelectedAssetId(null);
+        setUploadedDocuments([]);
+        setManualAddAnotherPromptOpen(true);
+        return;
+      }
+
       if (isExcelSuggestion) {
         setSelectedSuggestion(null);
         setSelectedAssetId(null);
@@ -762,16 +812,48 @@ const AddAsset = () => {
     },
   };
 
-  const handleManualSave = () => {
-    setMessage("Manual entry UI is ready. Save processing will be enabled in the next phase.");
+  const handleStartManualEntry = () => {
+    setError("");
+    setMessage("");
+    setSelectedAssetId(null);
+    setUploadedDocuments([]);
+    setParsingMessage("");
+    setSelectedSuggestion(buildManualSuggestion());
   };
+
+  const handleManualAddAnother = () => {
+    setManualAddAnotherPromptOpen(false);
+    handleStartManualEntry();
+  };
+
+  const handleManualFinish = () => {
+    setManualAddAnotherPromptOpen(false);
+    navigate("/assets");
+  };
+
+  const handleMethodChange = (method: AddAssetMethod) => {
+    setSelectedMethod(method);
+    if (method === "manual_entry") {
+      handleStartManualEntry();
+      return;
+    }
+
+    if (String(selectedSuggestion?.source || "").toLowerCase() === "manual") {
+      setSelectedSuggestion(null);
+      setSelectedAssetId(null);
+      setUploadedDocuments([]);
+    }
+  };
+
+  const isManualSelectionActive = selectedMethod === "manual_entry"
+    && String(selectedSuggestion?.source || "").toLowerCase() === "manual";
 
   return (
     <Box
       className="grid"
       sx={{
         height: "calc(100vh - 112px)",
-        overflow: "hidden",
+        overflow: isManualSelectionActive ? "auto" : "hidden",
         alignContent: "flex-start",
       }}
     >
@@ -796,7 +878,7 @@ const AddAsset = () => {
                 size="small"
                 label="Add Asset Method"
                 value={selectedMethod}
-                onChange={(event) => setSelectedMethod(event.target.value as AddAssetMethod)}
+                onChange={(event) => handleMethodChange(event.target.value as AddAssetMethod)}
                 sx={standardFieldSx}
                 fullWidth
               >
@@ -865,8 +947,8 @@ const AddAsset = () => {
         </Paper>
       </Box>
 
-      <Box className="col-12" sx={{ minHeight: 0, display: "flex" }}>
-        <Stack spacing={3} sx={{ minHeight: 0, flex: 1, overflow: "hidden" }}>
+      <Box className="col-12" sx={{ minHeight: 0, display: isManualSelectionActive ? "block" : "flex" }}>
+        <Stack spacing={3} sx={{ minHeight: 0, flex: 1, overflow: isManualSelectionActive ? "visible" : "hidden" }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           {message ? <Alert severity="success">{message}</Alert> : null}
 
@@ -1372,85 +1454,34 @@ const AddAsset = () => {
                 </Paper>
               ) : null}
 
-              {selectedMethod === "manual_entry" ? (
-                <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
-                  <Stack spacing={2}>
-                    <Typography variant="h6">Manual Entry</Typography>
-                    <div className="grid align-items-end">
-                      <div className="col-12 md:col-6 lg:col-4">
-                        <TextField
-                          size="small"
-                          label="Asset Name"
-                          value={manualForm.name}
-                          onChange={(event) => setManualForm((prev) => ({ ...prev, name: event.target.value }))}
-                          sx={standardFieldSx}
-                          fullWidth
-                        />
-                      </div>
-                      <div className="col-12 md:col-6 lg:col-4">
-                        <TextField
-                          size="small"
-                          label="Category"
-                          value={manualForm.category}
-                          onChange={(event) => setManualForm((prev) => ({ ...prev, category: event.target.value }))}
-                          sx={standardFieldSx}
-                          fullWidth
-                        />
-                      </div>
-                      <div className="col-12 md:col-6 lg:col-4">
-                        <TextField
-                          size="small"
-                          label="Vendor"
-                          value={manualForm.vendor}
-                          onChange={(event) => setManualForm((prev) => ({ ...prev, vendor: event.target.value }))}
-                          sx={standardFieldSx}
-                          fullWidth
-                        />
-                      </div>
-                      <div className="col-12 md:col-6 lg:col-4">
-                        <TextField
-                          size="small"
-                          label="Purchase Date"
-                          type="date"
-                          value={manualForm.purchaseDate}
-                          onChange={(event) => setManualForm((prev) => ({ ...prev, purchaseDate: event.target.value }))}
-                          InputLabelProps={{ shrink: true }}
-                          sx={standardFieldSx}
-                          fullWidth
-                        />
-                      </div>
-                      <div className="col-12 md:col-6 lg:col-4">
-                        <TextField
-                          size="small"
-                          label="Price"
-                          type="number"
-                          value={manualForm.price}
-                          onChange={(event) => setManualForm((prev) => ({ ...prev, price: event.target.value }))}
-                          sx={standardFieldSx}
-                          fullWidth
-                        />
-                      </div>
-                      <div className="col-12 md:col-6 lg:col-4">
-                        <TextField
-                          size="small"
-                          label="Warranty"
-                          value={manualForm.warranty}
-                          onChange={(event) => setManualForm((prev) => ({ ...prev, warranty: event.target.value }))}
-                          sx={standardFieldSx}
-                          fullWidth
-                        />
-                      </div>
-                    </div>
-                    <div className="grid">
-                      <div className="col-12 md:col-4 lg:col-3">
-                        <Button variant="contained" sx={{ height: standardControlHeight, minWidth: 120 }} onClick={handleManualSave}>
-                          Save
-                        </Button>
-                      </div>
-                    </div>
-                  </Stack>
-                </Paper>
+              {isManualSelectionActive ? (
+                <AssetPreviewModal
+                  open
+                  inlineMode
+                  showTitle={false}
+                  suggestion={selectedSuggestion}
+                  parsingMessage={parsingMessage}
+                  saveLoading={saveLoading}
+                  uploadedDocuments={uploadedDocuments}
+                  uploadedDocumentsLoading={documentsLoading}
+                  isDocumentActionLoading={isDocumentActionLoading}
+                  onViewUploadedDocument={(document) => {
+                    handleViewUploadedDocument(document);
+                  }}
+                  onDeleteUploadedDocument={(documentId) => {
+                    void handleDeleteUploadedDocument(documentId);
+                  }}
+                  collapseDocumentViewer
+                  onClose={() => {
+                    if (saveLoading) {
+                      return;
+                    }
+                    handleStartManualEntry();
+                  }}
+                  onSave={handleSaveAsset}
+                />
               ) : null}
+
             </>
           )}
         </Stack>
@@ -1486,7 +1517,7 @@ const AddAsset = () => {
       </Dialog>
 
       <AssetPreviewModal
-        open={Boolean(selectedSuggestion)}
+        open={Boolean(selectedSuggestion) && String(selectedSuggestion?.source || "").toLowerCase() !== "manual"}
         suggestion={selectedSuggestion}
         parsingMessage={parsingMessage}
         saveLoading={saveLoading}
@@ -1499,6 +1530,7 @@ const AddAsset = () => {
         onDeleteUploadedDocument={(documentId) => {
           void handleDeleteUploadedDocument(documentId);
         }}
+        collapseDocumentViewer={String(selectedSuggestion?.source || "").toLowerCase() === "manual"}
         onClose={() => {
           if (saveLoading) {
             return;
@@ -1560,6 +1592,21 @@ const AddAsset = () => {
           <Button onClick={handleFinishAssetFlow} disabled={nextSuggestionLoading}>No</Button>
           <Button variant="contained" onClick={() => void handleViewNextSuggestion()} disabled={nextSuggestionLoading}>
             {nextSuggestionLoading ? "Loading..." : "Yes"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={manualAddAnotherPromptOpen} onClose={() => undefined} fullWidth maxWidth="xs">
+        <DialogTitle>Asset added successfully</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Do you want to add another asset?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleManualFinish}>No</Button>
+          <Button variant="contained" onClick={handleManualAddAnother}>
+            Yes
           </Button>
         </DialogActions>
       </Dialog>

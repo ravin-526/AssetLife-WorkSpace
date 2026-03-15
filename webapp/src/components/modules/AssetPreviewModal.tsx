@@ -38,6 +38,9 @@ import {
 type AssetPreviewModalProps = {
   open: boolean;
   suggestion: AssetSuggestion | null;
+  inlineMode?: boolean;
+  showTitle?: boolean;
+  collapseDocumentViewer?: boolean;
   parsingMessage?: string;
   saveLoading?: boolean;
   uploadedDocuments?: UploadedAssetDocument[];
@@ -69,6 +72,9 @@ type AssetPreviewModalProps = {
 const AssetPreviewModal = ({
   open,
   suggestion,
+  inlineMode = false,
+  showTitle = true,
+  collapseDocumentViewer = false,
   parsingMessage,
   saveLoading = false,
   uploadedDocuments = [],
@@ -659,20 +665,41 @@ const AssetPreviewModal = ({
       onClose={onClose}
       fullWidth
       maxWidth="xl"
+      disablePortal={inlineMode}
+      hideBackdrop={inlineMode}
+      disableEnforceFocus={inlineMode}
+      disableRestoreFocus={inlineMode}
+      sx={inlineMode
+        ? {
+            position: "relative !important",
+            inset: "auto",
+            overflow: "visible",
+            "& .MuiDialog-container": {
+              display: "block",
+              height: "auto",
+              position: "relative",
+            },
+          }
+        : undefined}
       PaperProps={{
         sx: {
-          width: { xs: "100%", md: "80vw" },
-          maxWidth: 1320,
+          width: inlineMode ? "100%" : { xs: "100%", md: "80vw" },
+          maxWidth: inlineMode ? "100%" : 1320,
+          m: inlineMode ? 0 : undefined,
+          boxShadow: inlineMode ? "none" : undefined,
+          border: inlineMode ? 0 : undefined,
         },
       }}
     >
-      <DialogTitle>Asset Preview</DialogTitle>
-      <DialogContent sx={{ overflow: "hidden", height: { xs: "70vh", md: "72vh" } }}>
+      {showTitle ? <DialogTitle>Asset Preview</DialogTitle> : null}
+      <DialogContent sx={{ overflow: inlineMode ? "visible" : "hidden", height: inlineMode ? "auto" : { xs: "70vh", md: "72vh" } }}>
         <Box sx={{ mt: 1, minHeight: 0, height: "100%" }}>
           <Box
             sx={{
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "minmax(320px, 42%) minmax(0, 1fr)" },
+              gridTemplateColumns: collapseDocumentViewer
+                ? { xs: "1fr", md: "1fr" }
+                : { xs: "1fr", md: "minmax(320px, 42%) minmax(0, 1fr)" },
               gap: 2,
               height: "100%",
               minHeight: 0,
@@ -1168,6 +1195,7 @@ const AssetPreviewModal = ({
               </Box>
             </Paper>
 
+            {!collapseDocumentViewer ? (
             <Paper variant="outlined" sx={{ minHeight: 0, display: "flex", flexDirection: "column", p: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
                 <Typography variant="subtitle1">Invoice Preview</Typography>
@@ -1254,6 +1282,7 @@ const AssetPreviewModal = ({
                 </Box>
               )}
             </Paper>
+            ) : null}
           </Box>
         </Box>
       </DialogContent>

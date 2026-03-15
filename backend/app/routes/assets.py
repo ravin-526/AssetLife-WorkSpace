@@ -14,7 +14,7 @@ from app.db.mongo import get_db
 
 router = APIRouter(prefix="/api/assets", tags=["Assets"])
 
-UPLOAD_ROOT = Path("backend/uploads")
+UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 DOC_ROOT = UPLOAD_ROOT / "documents"
 DOC_ROOT.mkdir(parents=True, exist_ok=True)

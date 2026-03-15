@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar,
   Box,
   Button,
+  Collapse,
   Drawer,
   IconButton,
   InputBase,
@@ -27,6 +28,16 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import AlarmIcon from "@mui/icons-material/Alarm";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
+import MailOutlineIcon from "@mui/icons-material/MailOutline";
+import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
+import QrCodeScannerOutlinedIcon from "@mui/icons-material/QrCodeScannerOutlined";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 
 import theme, { COLORS, HEADER_HEIGHT, SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH, SPACING, getTheme } from "../styles/theme";
 import { LOGO } from "../constants/logo.ts";
@@ -34,13 +45,58 @@ import useUserStore from "../store/userStore.ts";
 
 type MenuItemConfig = {
   label: string;
-  path: string;
-  icon: JSX.Element;
+  to?: string;
+  icon?: JSX.Element;
+  children?: MenuItemConfig[];
+  match?: (pathname: string, search: string) => boolean;
 };
 
 const menuItems: MenuItemConfig[] = [
-  { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon /> },
-  { label: "Assets", path: "/assets", icon: <Inventory2Icon /> },
+  { label: "Dashboard", to: "/dashboard", icon: <DashboardIcon /> },
+  {
+    label: "Assets",
+    icon: <Inventory2Icon />,
+    children: [
+      {
+        label: "View Assets",
+        to: "/assets",
+        match: (pathname: string) => pathname === "/assets",
+      },
+      {
+        label: "Add Assets",
+        to: "/assets/add?method=email_sync",
+        match: (pathname: string) => pathname === "/assets/add",
+        children: [
+          {
+            label: "Email Sync",
+            to: "/assets/add?method=email_sync",
+            match: (pathname: string, search: string) => pathname === "/assets/add" && search.includes("method=email_sync"),
+          },
+          {
+            label: "Invoice Upload",
+            to: "/assets/add?method=invoice_upload",
+            match: (pathname: string, search: string) => pathname === "/assets/add" && search.includes("method=invoice_upload"),
+          },
+          {
+            label: "Excel Upload",
+            to: "/assets/add?method=excel_upload",
+            match: (pathname: string, search: string) => pathname === "/assets/add" && search.includes("method=excel_upload"),
+          },
+          {
+            label: "Barcode / QR Code Scan",
+            to: "/assets/add?method=barcode_qr",
+            match: (pathname: string, search: string) => pathname === "/assets/add" && search.includes("method=barcode_qr"),
+          },
+          {
+            label: "Manual Entry",
+            to: "/assets/add?method=manual_entry",
+            match: (pathname: string, search: string) => pathname === "/assets/add" && search.includes("method=manual_entry"),
+          },
+        ],
+      },
+    ],
+  },
+  { label: "Reminders", to: "/reminders", icon: <AlarmIcon /> },
 ];
 
 type AdminLayoutProps = {
@@ -60,16 +116,48 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activePath, setActivePath] = useState("/dashboard");
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
+  const [assetsMenuOpen, setAssetsMenuOpen] = useState(true);
+  const [addAssetsMenuOpen, setAddAssetsMenuOpen] = useState(true);
+  const [expandedDrawerWidth, setExpandedDrawerWidth] = useState(SIDEBAR_WIDTH);
+  const drawerPaperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setActivePath(location.pathname);
   }, [location.pathname]);
 
   useEffect(() => {
+    if (location.pathname.startsWith("/assets")) {
+      setAssetsMenuOpen(true);
+      setAddAssetsMenuOpen(true);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
     setCollapsed(isSmallScreen);
   }, [isSmallScreen]);
 
-  const drawerWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
+  useEffect(() => {
+    if (collapsed) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const paper = drawerPaperRef.current;
+      if (!paper) {
+        return;
+      }
+
+      const measuredWidth = Math.ceil(paper.scrollWidth + 8);
+      const constrainedWidth = Math.max(SIDEBAR_WIDTH, Math.min(measuredWidth, 360));
+      setExpandedDrawerWidth(constrainedWidth);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [addAssetsMenuOpen, assetsMenuOpen, collapsed, location.pathname, location.search]);
+
+  const drawerWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : expandedDrawerWidth;
   const sidebarBorderColor = COLORS.SIDEBAR_BORDER;
   const headerBorderColor = COLORS.HEADER_BORDER;
 
@@ -108,10 +196,29 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
     navigate("/login", { replace: true });
   };
 
+  const isItemActive = (item: MenuItemConfig): boolean => {
+    if (item.match) {
+      return item.match(location.pathname, location.search);
+    }
+    if (item.to) {
+      const [pathOnly] = item.to.split("?");
+      return location.pathname === pathOnly;
+    }
+    return (item.children || []).some((child) => isItemActive(child));
+  };
+
+  const baseItemSx = {
+    mb: `${SPACING(0.5)}px`,
+    borderRadius: 2,
+    minHeight: 32,
+    py: `${SPACING(0.5)}px`,
+  };
+
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
       <Drawer
         variant="permanent"
+        PaperProps={{ ref: drawerPaperRef }}
         sx={{
           width: drawerWidth,
           flexShrink: 0,
@@ -166,20 +273,201 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
 
         <List sx={{ px: 1.5 }}>
           {menuItems.map((item) => {
-            const selected = activePath === item.path;
+            const selected = isItemActive(item);
+
+            if (item.label === "Assets") {
+              return (
+                <Box key="assets-root">
+                  <ListItemButton
+                    onClick={() => {
+                      if (collapsed) {
+                        setCollapsed(false);
+                        setAssetsMenuOpen(true);
+                        return;
+                      }
+                      setAssetsMenuOpen((prev) => !prev);
+                    }}
+                    sx={{
+                      ...baseItemSx,
+                      justifyContent: collapsed ? "center" : "flex-start",
+                      bgcolor: collapsed && selected ? COLORS.SIDEBAR_ACTIVE : "transparent",
+                      color: collapsed && selected ? layoutTheme.palette.primary.contrastText : "text.secondary",
+                      "&:hover": {
+                        bgcolor: collapsed && selected ? COLORS.SIDEBAR_ACTIVE : "action.hover",
+                      },
+                    }}
+                  >
+                    <Tooltip title={collapsed ? item.label : ""} placement="right">
+                      <ListItemIcon
+                        sx={{
+                          minWidth: collapsed ? 0 : 36,
+                          mr: collapsed ? 0 : 1,
+                          color: collapsed && selected ? layoutTheme.palette.primary.contrastText : "text.secondary",
+                        }}
+                      >
+                        {item.icon}
+                      </ListItemIcon>
+                    </Tooltip>
+                    {!collapsed ? (
+                      <>
+                        <ListItemText
+                          primary={item.label}
+                          primaryTypographyProps={{
+                            variant: "h6",
+                            sx: {
+                              lineHeight: theme.sidebar.menuLineHeight,
+                              whiteSpace: "normal",
+                              overflowWrap: "anywhere",
+                            },
+                          }}
+                        />
+                        {assetsMenuOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                      </>
+                    ) : null}
+                  </ListItemButton>
+
+                  {!collapsed ? (
+                    <Collapse in={assetsMenuOpen} timeout="auto" unmountOnExit>
+                      <List component="div" disablePadding>
+                        <ListItemButton
+                          component={NavLink}
+                          to="/assets"
+                          selected={isItemActive({ label: "View Assets", to: "/assets", match: (pathname) => pathname === "/assets" })}
+                          sx={{
+                            ...baseItemSx,
+                            pl: 5,
+                            color: isItemActive({ label: "View Assets", to: "/assets", match: (pathname) => pathname === "/assets" })
+                              ? layoutTheme.palette.primary.contrastText
+                              : "text.secondary",
+                            bgcolor: isItemActive({ label: "View Assets", to: "/assets", match: (pathname) => pathname === "/assets" })
+                              ? COLORS.SIDEBAR_ACTIVE
+                              : "transparent",
+                            "&:hover": {
+                              bgcolor: isItemActive({ label: "View Assets", to: "/assets", match: (pathname) => pathname === "/assets" })
+                                ? COLORS.SIDEBAR_ACTIVE
+                                : "action.hover",
+                            },
+                          }}
+                        >
+                          <ListItemIcon
+                            sx={{
+                              minWidth: 28,
+                              color: isItemActive({ label: "View Assets", to: "/assets", match: (pathname) => pathname === "/assets" })
+                                ? layoutTheme.palette.primary.contrastText
+                                : "text.secondary",
+                            }}
+                          >
+                            <VisibilityOutlinedIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary="View Assets"
+                            primaryTypographyProps={{
+                              variant: "h6",
+                              sx: {
+                                whiteSpace: "normal",
+                                overflowWrap: "anywhere",
+                              },
+                            }}
+                          />
+                        </ListItemButton>
+
+                        <ListItemButton
+                          onClick={() => setAddAssetsMenuOpen((prev) => !prev)}
+                          sx={{
+                            ...baseItemSx,
+                            pl: 5,
+                            color: "text.secondary",
+                            bgcolor: "transparent",
+                            "&:hover": {
+                              bgcolor: "action.hover",
+                            },
+                          }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 28, color: "text.secondary" }}>
+                            <AddCircleOutlineIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary="Add Assets"
+                            primaryTypographyProps={{
+                              variant: "h6",
+                              sx: {
+                                whiteSpace: "normal",
+                                overflowWrap: "anywhere",
+                              },
+                            }}
+                          />
+                          {addAssetsMenuOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                        </ListItemButton>
+
+                        <Collapse in={addAssetsMenuOpen} timeout="auto" unmountOnExit>
+                          <List component="div" disablePadding>
+                            {[
+                              { label: "Email Sync", query: "email_sync", icon: <MailOutlineIcon fontSize="small" /> },
+                              { label: "Invoice Upload", query: "invoice_upload", icon: <ReceiptLongOutlinedIcon fontSize="small" /> },
+                              { label: "Excel Upload", query: "excel_upload", icon: <TableChartOutlinedIcon fontSize="small" /> },
+                              { label: "Barcode / QR Code Scan", query: "barcode_qr", icon: <QrCodeScannerOutlinedIcon fontSize="small" /> },
+                              { label: "Manual Entry", query: "manual_entry", icon: <EditOutlinedIcon fontSize="small" /> },
+                            ].map((option) => {
+                              const to = `/assets/add?method=${option.query}`;
+                              const isAddAssetPage = location.pathname === "/assets/add";
+                              const selectedMethod = isAddAssetPage
+                                && (location.search.includes(`method=${option.query}`) || (!location.search && option.query === "email_sync"));
+                              return (
+                                <ListItemButton
+                                  key={option.query}
+                                  component={NavLink}
+                                  to={to}
+                                  selected={selectedMethod}
+                                  sx={{
+                                    ...baseItemSx,
+                                    pl: 8,
+                                    color: selectedMethod ? layoutTheme.palette.primary.contrastText : "text.secondary",
+                                    bgcolor: selectedMethod ? COLORS.SIDEBAR_ACTIVE : "transparent",
+                                    "&:hover": {
+                                      bgcolor: selectedMethod ? COLORS.SIDEBAR_ACTIVE : "action.hover",
+                                    },
+                                  }}
+                                >
+                                  <ListItemIcon
+                                    sx={{
+                                      minWidth: 26,
+                                      color: selectedMethod ? layoutTheme.palette.primary.contrastText : "text.secondary",
+                                    }}
+                                  >
+                                    {option.icon}
+                                  </ListItemIcon>
+                                  <ListItemText
+                                    primary={option.label}
+                                    primaryTypographyProps={{
+                                      variant: "h6",
+                                      sx: {
+                                        whiteSpace: "normal",
+                                        overflowWrap: "anywhere",
+                                        lineHeight: 1.25,
+                                      },
+                                    }}
+                                  />
+                                </ListItemButton>
+                              );
+                            })}
+                          </List>
+                        </Collapse>
+                      </List>
+                    </Collapse>
+                  ) : null}
+                </Box>
+              );
+            }
 
             return (
               <ListItemButton
-                key={item.path}
+                key={item.to || item.label}
                 component={NavLink}
-                to={item.path}
+                to={item.to || "/dashboard"}
                 selected={selected}
-                onClick={() => setActivePath(item.path)}
+                onClick={() => setActivePath(item.to || "/dashboard")}
                 sx={{
-                  mb: `${SPACING(0.5)}px`,
-                  borderRadius: 2,
-                  minHeight: 32,
-                  py: `${SPACING(0.5)}px`,
+                  ...baseItemSx,
                   justifyContent: collapsed ? "center" : "flex-start",
                   bgcolor: selected ? COLORS.SIDEBAR_ACTIVE : "transparent",
                   color: selected ? layoutTheme.palette.primary.contrastText : "text.secondary",
@@ -205,7 +493,11 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
                     primary={item.label}
                     primaryTypographyProps={{
                       variant: "h6",
-                      sx: { lineHeight: theme.sidebar.menuLineHeight },
+                      sx: {
+                        lineHeight: theme.sidebar.menuLineHeight,
+                        whiteSpace: "normal",
+                        overflowWrap: "anywhere",
+                      },
                     }}
                   />
                 ) : null}
