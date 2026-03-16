@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 
 from bson import ObjectId
@@ -54,10 +55,8 @@ class EmailScanService:
         "application/pdf",
         "image/jpeg",
         "image/png",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
-    ALLOWED_ATTACHMENT_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".xls", ".xlsx")
+    ALLOWED_ATTACHMENT_EXT = (".pdf", ".jpg", ".jpeg", ".png")
     INVOICE_UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads" / "invoices"
 
     @staticmethod
@@ -98,10 +97,6 @@ class EmailScanService:
             return ".jpg"
         if lowered_name.endswith(".png") or lowered_mime == "image/png":
             return ".png"
-        if lowered_name.endswith(".xlsx") or lowered_mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-            return ".xlsx"
-        if lowered_name.endswith(".xls") or lowered_mime == "application/vnd.ms-excel":
-            return ".xls"
         return ".bin"
 
     def _is_probable_invoice(self, subject: str, attachment_names: list[str]) -> bool:
@@ -133,6 +128,80 @@ class EmailScanService:
     def _is_non_asset_vendor(self, sender: str) -> bool:
         sender_lower = (sender or "").lower()
         return any(vendor in sender_lower for vendor in self.NON_ASSET_VENDORS)
+
+    @staticmethod
+    def _subject_fallback_name(subject: str, message_id: str) -> str:
+        cleaned = re.sub(r"\b(invoice|receipt|tax|order|payment|bill)\b", "", subject or "", flags=re.IGNORECASE)
+        cleaned = re.sub(r"[^a-zA-Z0-9\s-]", " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -_")
+        if cleaned:
+            return cleaned[:120]
+        return f"Detected Asset {message_id[-6:]}"
+
+    @staticmethod
+    def _sender_fallback_vendor(sender: str) -> str | None:
+        raw = (sender or "").strip().strip('"')
+        if not raw:
+            return None
+        if "<" in raw:
+            return raw.split("<", 1)[0].strip() or None
+        if "@" in raw:
+            domain = raw.split("@", 1)[1]
+            return domain.split(".", 1)[0].replace("-", " ").title()
+        return raw
+
+    def _ensure_minimum_suggestion_payload(self, item: dict[str, Any], *, sender: str, subject: str, message_id: str) -> None:
+        product_name = str(item.get("product_name") or "").strip()
+        invoice_number = str(item.get("invoice_number") or "").strip()
+        price = item.get("price")
+
+        if not product_name:
+            item["product_name"] = self._subject_fallback_name(subject, message_id)
+        if not item.get("vendor"):
+            item["vendor"] = self._sender_fallback_vendor(sender)
+
+        # Last-resort fallback if parser yielded almost no data.
+        if not (str(item.get("product_name") or "").strip() or price is not None or invoice_number):
+            item["product_name"] = self._subject_fallback_name(subject, message_id)
+
+    @staticmethod
+    def _log_parsed_fields(message_id: str, item: dict[str, Any]) -> None:
+        app_logger.info(
+            "Parsed invoice fields",
+            extra={
+                "message_id": message_id,
+                "parsed_product_name": str(item.get("product_name") or ""),
+                "parsed_price": item.get("price"),
+                "parsed_purchase_date": item.get("purchase_date"),
+                "parsed_invoice_number": str(item.get("invoice_number") or ""),
+            },
+        )
+
+    @staticmethod
+    def _merge_parsed_fields(item: dict[str, Any], parsed_details: dict[str, Any]) -> None:
+        if not item.get("product_name") and parsed_details.get("product_name"):
+            item["product_name"] = parsed_details["product_name"]
+        if item.get("price") is None and parsed_details.get("price") is not None:
+            item["price"] = parsed_details["price"]
+            item["currency"] = parsed_details.get("currency") or item.get("currency") or "INR"
+            item["invoice_amount"] = parsed_details.get("invoice_amount")
+            item["invoice_currency"] = parsed_details.get("invoice_currency") or item.get("currency") or "INR"
+            item["exchange_rate"] = parsed_details.get("exchange_rate")
+            item["original_amount"] = parsed_details.get("original_amount")
+            item["original_currency"] = parsed_details.get("original_currency")
+        else:
+            if item.get("invoice_amount") is None and parsed_details.get("invoice_amount") is not None:
+                item["invoice_amount"] = parsed_details.get("invoice_amount")
+            if not item.get("invoice_currency") and parsed_details.get("invoice_currency"):
+                item["invoice_currency"] = parsed_details.get("invoice_currency")
+            if item.get("exchange_rate") is None and parsed_details.get("exchange_rate") is not None:
+                item["exchange_rate"] = parsed_details.get("exchange_rate")
+        if not item.get("purchase_date") and parsed_details.get("purchase_date"):
+            item["purchase_date"] = parsed_details["purchase_date"]
+        if not item.get("invoice_number") and parsed_details.get("invoice_number"):
+            item["invoice_number"] = parsed_details["invoice_number"]
+        if parsed_details.get("description"):
+            item["description"] = parsed_details["description"]
 
     async def ensure_indexes(self) -> None:
         self.INVOICE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -182,6 +251,7 @@ class EmailScanService:
         max_results: int = 100,
         subject_keywords: list[str] | None = None,
         sender_addresses: list[str] | None = None,
+        exclude_service_receipts: bool = True,
     ) -> dict[str, Any]:
         access_token = await self.gmail.get_valid_access_token(user_id)
         capped_max_results = min(max_results, self.MAX_SYNC_RESULTS)
@@ -201,6 +271,7 @@ class EmailScanService:
         attachments_detected = 0
         attachments_downloaded = 0
         attachments_processed = 0
+        service_receipts_skipped = 0
 
         # Keep suggestion data temporary per sync run.
         await self.suggestions.clear_temporary_suggestions(user_id)
@@ -211,6 +282,7 @@ class EmailScanService:
             subject = ""
 
             try:
+                app_logger.info("Processing email", extra={"message_id": message_id})
                 message = await self.gmail.get_message(access_token, message_id)
                 payload = message.get("payload", {})
                 payload_headers = payload.get("headers", [])
@@ -220,54 +292,209 @@ class EmailScanService:
                 filtered_attachments = [a for a in attachments if self._is_allowed_attachment(a.filename, a.mime_type)]
                 attachments_detected += len(filtered_attachments)
 
+                for attachment in filtered_attachments:
+                    app_logger.info(
+                        "Attachment detected",
+                        extra={
+                            "message_id": message_id,
+                            "attachment_name": attachment.filename,
+                            "attachment_mime_type": attachment.mime_type,
+                        },
+                    )
+
                 sender = str(metadata.get("sender") or sender or "")
                 subject = str(metadata.get("subject") or subject or "")
 
                 if not self._sender_matches_filter(sender, sender_filters):
                     continue
-                if self._is_non_asset_vendor(sender):
+                if exclude_service_receipts and self._is_non_asset_vendor(sender):
+                    service_receipts_skipped += 1
                     continue
 
                 probable_invoice = self._subject_matches_keywords(subject, subject_filters) or self._is_probable_invoice(subject, [a.filename for a in filtered_attachments])
                 if not probable_invoice or not filtered_attachments:
                     continue
 
+                app_logger.info(
+                    "Invoice candidate email identified",
+                    extra={"message_id": message_id, "subject": subject},
+                )
+
                 invoice_emails_detected += 1
 
-                primary_attachment = filtered_attachments[0] if filtered_attachments else None
-                attachment_file_path: str | None = None
+                if len(filtered_attachments) > 1:
+                    app_logger.info(
+                        "Multiple attachments detected in email",
+                        extra={"message_id": message_id, "count": len(filtered_attachments)},
+                    )
 
-                if primary_attachment:
-                    attachment_bytes = await self.gmail.get_attachment_data(access_token, message_id, primary_attachment.attachment_id)
-                    if attachment_bytes:
-                        extension = self._attachment_extension(primary_attachment.filename, primary_attachment.mime_type)
-                        user_folder = self.INVOICE_UPLOAD_DIR / user_id
-                        user_folder.mkdir(parents=True, exist_ok=True)
-                        safe_name = self._safe_filename(primary_attachment.filename)
-                        destination = user_folder / f"{message_id}_{safe_name}"
-                        if destination.suffix.lower() != extension:
-                            destination = destination.with_suffix(extension)
-                        destination.write_bytes(attachment_bytes)
-                        attachment_file_path = str(destination)
-                        attachments_downloaded += 1
+                scored_attachments: list[dict[str, Any]] = []
+                for attachment in filtered_attachments:
+                    app_logger.info(
+                        f"Processing attachment: {attachment.filename}",
+                        extra={"message_id": message_id, "attachment_name": attachment.filename},
+                    )
+                    attachment_bytes = await self.gmail.get_attachment_data(access_token, message_id, attachment.attachment_id)
+                    if not attachment_bytes:
+                        app_logger.warning(
+                            "Attachment download returned empty payload",
+                            extra={"message_id": message_id, "attachment_name": attachment.filename},
+                        )
+                        continue
 
-                for item in parsed_items:
+                    extension = self._attachment_extension(attachment.filename, attachment.mime_type)
+                    tmp_path: Path | None = None
+                    try:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temp_file:
+                            temp_file.write(attachment_bytes)
+                            tmp_path = Path(temp_file.name)
+
+                        score_result = self.parser.score_attachment_invoice_likelihood(
+                            file_path=tmp_path,
+                            filename=attachment.filename,
+                        )
+                        score_result.update(
+                            {
+                                "attachment": attachment,
+                                "attachment_bytes": attachment_bytes,
+                                "extension": extension,
+                            }
+                        )
+                        scored_attachments.append(score_result)
+
+                        app_logger.info(
+                            "Extracted invoice text length",
+                            extra={
+                                "message_id": message_id,
+                                "attachment_name": attachment.filename,
+                                "text_length": len(str(score_result.get("text") or "")),
+                            },
+                        )
+
+                        if score_result.get("is_invoice_candidate"):
+                            app_logger.info(
+                                "Invoice indicators detected in attachment",
+                                extra={
+                                    "message_id": message_id,
+                                    "attachment_name": attachment.filename,
+                                    "score": score_result.get("score"),
+                                    "indicators": score_result.get("indicator_hits"),
+                                },
+                            )
+                    finally:
+                        if tmp_path and tmp_path.exists():
+                            tmp_path.unlink(missing_ok=True)
+
+                invoice_candidates = [s for s in scored_attachments if bool(s.get("is_invoice_candidate"))]
+                invoice_candidates.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+                selected_candidates = invoice_candidates[:3]
+
+                if selected_candidates:
+                    main = selected_candidates[0]["attachment"]
+                    app_logger.info(
+                        "Selected attachment as main invoice",
+                        extra={"message_id": message_id, "attachment_name": main.filename},
+                    )
+                else:
+                    app_logger.info(
+                        "No invoice attachment detected, falling back to email body",
+                        extra={"message_id": message_id},
+                    )
+
+                base_item = parsed_items[0] if parsed_items else {
+                    "product_name": "Unknown Asset",
+                    "source": "gmail",
+                    "email_message_id": message_id,
+                }
+
+                if not selected_candidates:
+                    fallback_item = dict(base_item)
+                    fallback_item["sender"] = sender
+                    fallback_item["subject"] = subject
+                    fallback_item["email_date"] = metadata.get("email_date")
+                    fallback_item["source_email_id"] = message_id
+                    fallback_item.pop("_body_complete", None)
+
+                    self._ensure_minimum_suggestion_payload(fallback_item, sender=sender, subject=subject, message_id=message_id)
+                    self._log_parsed_fields(message_id, fallback_item)
+
+                    already_added, duplicate_reason = await self.suggestions.is_already_added(user_id, fallback_item)
+                    if already_added:
+                        skipped_duplicates += 1
+                        app_logger.info(
+                            "Suggestion skipped due to duplicate detection",
+                            extra={"message_id": message_id, "duplicate_reason": duplicate_reason or "unknown"},
+                        )
+                    app_logger.info("Creating asset suggestion", extra={"message_id": message_id, "is_fallback": True})
+                    created_suggestions += await self.suggestions.create_suggestions(user_id, fallback_item, already_added=already_added)
+                    continue
+
+                for index, candidate in enumerate(selected_candidates):
+                    candidate_attachment = candidate["attachment"]
+                    candidate_bytes = candidate.get("attachment_bytes") or b""
+                    candidate_extension = str(candidate.get("extension") or ".bin")
+
+                    item = dict(base_item)
                     item["sender"] = sender
                     item["subject"] = subject
                     item["email_date"] = metadata.get("email_date")
                     item["source_email_id"] = message_id
-                    if primary_attachment:
-                        item["attachment_id"] = primary_attachment.attachment_id
-                        item["attachment_filename"] = primary_attachment.filename
-                        item["attachment_mime_type"] = primary_attachment.mime_type
-                    if attachment_file_path:
-                        item["invoice_attachment_path"] = attachment_file_path
-                        attachments_processed += 1
+                    item["attachment_id"] = candidate_attachment.attachment_id
+                    item["attachment_filename"] = candidate_attachment.filename
+                    item["attachment_mime_type"] = candidate_attachment.mime_type
 
-                    already_added = await self.suggestions.is_already_added(user_id, item)
+                    parse_path: Path | None = None
+                    persistent_invoice_path: str | None = None
+                    try:
+                        if index == 0:
+                            user_folder = self.INVOICE_UPLOAD_DIR / user_id
+                            user_folder.mkdir(parents=True, exist_ok=True)
+                            safe_name = self._safe_filename(candidate_attachment.filename)
+                            destination = user_folder / f"{message_id}_{safe_name}"
+                            if destination.suffix.lower() != candidate_extension:
+                                destination = destination.with_suffix(candidate_extension)
+                            destination.write_bytes(candidate_bytes)
+                            persistent_invoice_path = str(destination)
+                            parse_path = destination
+                            item["invoice_attachment_path"] = persistent_invoice_path
+                            attachments_downloaded += 1
+                        else:
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=candidate_extension) as temp_file:
+                                temp_file.write(candidate_bytes)
+                                parse_path = Path(temp_file.name)
+
+                        body_complete = bool(item.pop("_body_complete", False))
+                        if parse_path and (not body_complete and not (item.get("price") and item.get("purchase_date"))):
+                            parsed_details = self.parser.parse_attachment(
+                                file_path=parse_path,
+                                sender=sender,
+                                subject=subject,
+                                fallback_name=item.get("product_name"),
+                                existing_data={k: v for k, v in item.items() if v is not None and not k.startswith("_")},
+                            )
+                            self._merge_parsed_fields(item, parsed_details)
+                            attachments_processed += 1
+                    except Exception as parse_err:
+                        app_logger.warning(
+                            "Attachment parse during scan failed",
+                            extra={"message_id": message_id, "error": str(parse_err)},
+                        )
+                    finally:
+                        if parse_path and (not persistent_invoice_path) and parse_path.exists():
+                            parse_path.unlink(missing_ok=True)
+
+                    self._ensure_minimum_suggestion_payload(item, sender=sender, subject=subject, message_id=message_id)
+                    self._log_parsed_fields(message_id, item)
+
+                    already_added, duplicate_reason = await self.suggestions.is_already_added(user_id, item)
                     if already_added:
                         skipped_duplicates += 1
+                        app_logger.info(
+                            "Suggestion skipped due to duplicate detection",
+                            extra={"message_id": message_id, "duplicate_reason": duplicate_reason or "unknown"},
+                        )
 
+                    app_logger.info("Creating asset suggestion", extra={"message_id": message_id, "is_fallback": False})
                     created_suggestions += await self.suggestions.create_suggestions(user_id, item, already_added=already_added)
             except Exception as error:
                 app_logger.exception("Email scan failed", exc_info=error)
@@ -296,6 +523,7 @@ class EmailScanService:
             "attachments_found": attachments_detected,
             "attachments_downloaded": attachments_downloaded,
             "attachments_processed": attachments_processed,
+            "service_receipts_skipped": service_receipts_skipped,
             "created_suggestions": created_suggestions,
             "assets_detected": created_suggestions,
             "skipped_duplicates": skipped_duplicates,

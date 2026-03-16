@@ -36,6 +36,7 @@ class GmailSyncRequest(BaseModel):
     max_results: int = Field(default=100, ge=1, le=500)
     subject_keywords: list[str] | None = None
     sender_addresses: list[str] | None = None
+    exclude_service_receipts: bool = True
     email: str | None = Field(default=None, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -84,6 +85,7 @@ class GmailSyncResponse(BaseModel):
     attachments_found: int = 0
     attachments_downloaded: int = 0
     attachments_processed: int = 0
+    service_receipts_skipped: int = 0
     created_suggestions: int
     assets_detected: int = 0
     skipped_duplicates: int
@@ -107,6 +109,7 @@ class GmailSyncResponse(BaseModel):
             "attachments_found",
             "attachments_downloaded",
             "attachments_processed",
+            "service_receipts_skipped",
             "created_suggestions",
             "assets_detected",
             "skipped_duplicates",

@@ -168,6 +168,7 @@ async def run_email_scan(payload: GmailSyncRequest, current_user: dict[str, str]
             max_results=payload.max_results,
             subject_keywords=payload.subject_keywords,
             sender_addresses=payload.sender_addresses,
+            exclude_service_receipts=payload.exclude_service_receipts,
         )
 
         raw_suggestions = result.get("suggestions") if isinstance(result.get("suggestions"), list) else []

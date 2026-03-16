@@ -14,6 +14,7 @@ from app.routes.email_scans import router as email_scans_router
 from app.routes.gmail_integration import router as gmail_integration_router
 from app.routes.individual import router as individual_router
 from app.routes.reminders import router as reminders_router
+from app.routes.testing import router as testing_router
 from app.routes.user import router as user_router
 
 
@@ -44,6 +45,7 @@ app.include_router(asset_suggestions_router)
 app.include_router(assets_router)
 app.include_router(categories_router)
 app.include_router(reminders_router)
+app.include_router(testing_router)
 
 
 @app.on_event("startup")

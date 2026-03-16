@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -10,6 +11,7 @@ import {
   DialogContent,
   DialogTitle,
   Fade,
+  FormControlLabel,
   LinearProgress,
   MenuItem,
   Pagination,
@@ -55,6 +57,7 @@ type ScanSummary = {
   emailsScanned: number;
   invoiceEmails: number;
   assetsDetected: number;
+  serviceReceiptsSkipped: number;
 };
 
 const SYNC_ACTIVITY_STEPS = [
@@ -85,6 +88,7 @@ const AddAsset = () => {
   const [useCustomScanRange, setUseCustomScanRange] = useState(false);
   const [scanFromDate, setScanFromDate] = useState("");
   const [scanToDate, setScanToDate] = useState("");
+  const [excludeServiceReceipts, setExcludeServiceReceipts] = useState(true);
   const [subjectKeywordsInput, setSubjectKeywordsInput] = useState("invoice, receipt");
   const [senderEmailsInput, setSenderEmailsInput] = useState("");
   const [mailboxEmailInput, setMailboxEmailInput] = useState("");
@@ -364,7 +368,7 @@ const AddAsset = () => {
       const subjectKeywords = parseCsvInput(subjectKeywordsInput);
       const senderEmails = parseCsvInput(senderEmailsInput);
 
-      const response = await syncMailboxEmails(effectiveScanDays, 200, subjectKeywords, senderEmails);
+      const response = await syncMailboxEmails(effectiveScanDays, 200, subjectKeywords, senderEmails, excludeServiceReceipts);
 
       window.clearInterval(stepTimer);
       setActivityStepStates(SYNC_ACTIVITY_STEPS.map(() => "completed"));
@@ -372,8 +376,9 @@ const AddAsset = () => {
       const emailsScanned = response.emails_scanned ?? response.scanned;
       const invoiceEmails = response.invoice_emails ?? response.purchase_emails_detected;
       const assetsDetected = response.assets_detected ?? response.created_suggestions;
+      const serviceReceiptsSkipped = response.service_receipts_skipped ?? 0;
 
-      setScanSummary({ emailsScanned, invoiceEmails, assetsDetected });
+      setScanSummary({ emailsScanned, invoiceEmails, assetsDetected, serviceReceiptsSkipped });
 
       if (response.suggestions) {
         setSuggestions(response.suggestions);
@@ -669,16 +674,31 @@ const AddAsset = () => {
     }
   };
 
-  const formatSuggestionPrice = (price?: number) => {
-    if (price === null || price === undefined) {
+  const formatSuggestionPrice = (suggestion: { price?: number; invoice_currency?: string; invoice_amount?: number }) => {
+    if (suggestion.price === null || suggestion.price === undefined) {
       return "-";
     }
 
-    return new Intl.NumberFormat("en-IN", {
+    // Guard against implausibly large values produced by parsing errors
+    if (suggestion.price > 100_000_000) {
+      return "-";
+    }
+
+    const inrFormatted = new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       maximumFractionDigits: 2,
-    }).format(price);
+    }).format(suggestion.price);
+
+    if (
+      suggestion.invoice_currency
+      && suggestion.invoice_currency !== "INR"
+      && suggestion.invoice_amount != null
+    ) {
+      return `${inrFormatted} (${suggestion.invoice_currency} ${suggestion.invoice_amount.toLocaleString("en-US", { maximumFractionDigits: 2 })})`;
+    }
+
+    return inrFormatted;
   };
 
   const openBlobForDownload = (blob: Blob, fileName: string) => {
@@ -1052,13 +1072,27 @@ const AddAsset = () => {
                       <div className="grid">
                         <div className="col-12 md:col-4 lg:col-3">
                           <Stack spacing={1}>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={excludeServiceReceipts}
+                                  onChange={(event) => setExcludeServiceReceipts(event.target.checked)}
+                                />
+                              }
+                              label="Exclude service and delivery receipts"
+                              sx={{ ml: 0 }}
+                            />
+                            <Typography variant="caption" color="text.secondary" sx={{ pl: 0.5 }}>
+                              Keeps scans focused on tangible asset invoices (Uber, food, courier, etc. are skipped).
+                            </Typography>
                             <Button
-                              variant="contained"
+                              variant="outlined"
                               onClick={handleRunMailboxSync}
                               disabled={isActionLoading("syncMailbox") || !mailboxConnected || isActionLoading("loadSuggestions")}
-                              sx={{ height: standardControlHeight, minWidth: 180 }}
+                              sx={{ height: standardControlHeight, minWidth: 210 }}
                             >
-                              Sync Mail
+                              Fetch assets from mailbox
                             </Button>
                             <Box sx={{ height: 4 }}>
                               <LinearProgress
@@ -1103,6 +1137,11 @@ const AddAsset = () => {
                               />
                               <Chip
                                 label={`Assets Identified: ${scanSummary.assetsDetected}`}
+                                variant="outlined"
+                                size="small"
+                              />
+                              <Chip
+                                label={`Service Receipts Skipped: ${scanSummary.serviceReceiptsSkipped}`}
                                 variant="outlined"
                                 size="small"
                               />
@@ -1194,7 +1233,7 @@ const AddAsset = () => {
                                 >
                                   <Typography variant="body2">{suggestion.product_name || "-"}</Typography>
                                   <Typography variant="body2">{suggestion.vendor || suggestion.sender || "-"}</Typography>
-                                  <Typography variant="body2">{formatSuggestionPrice(suggestion.price)}</Typography>
+                                  <Typography variant="body2">{formatSuggestionPrice(suggestion)}</Typography>
                                   <Typography variant="body2">
                                     {suggestion.purchase_date ? new Date(suggestion.purchase_date).toLocaleDateString() : "-"}
                                   </Typography>
@@ -1397,7 +1436,7 @@ const AddAsset = () => {
                                     >
                                       <Typography variant="body2">{item.product_name || "-"}</Typography>
                                       <Typography variant="body2">{item.vendor || "-"}</Typography>
-                                      <Typography variant="body2">{formatSuggestionPrice(item.price)}</Typography>
+                                      <Typography variant="body2">{formatSuggestionPrice(item)}</Typography>
                                       <Typography variant="body2">{item.purchase_date ? new Date(item.purchase_date).toLocaleDateString() : "-"}</Typography>
                                       <Typography variant="body2">{item.category || "-"}</Typography>
                                       <Chip

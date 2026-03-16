@@ -218,7 +218,13 @@ const EmailScans = () => {
                   <Typography variant="body2"><strong>Date:</strong> {suggestion.email_date ? new Date(suggestion.email_date).toLocaleDateString() : "-"}</Typography>
                   <Typography variant="body2"><strong>Product:</strong> {suggestion.product_name || "-"}</Typography>
                   <Typography variant="body2"><strong>Vendor:</strong> {suggestion.vendor || "-"}</Typography>
-                  <Typography variant="body2"><strong>Price:</strong> {suggestion.price ?? "-"}</Typography>
+                  <Typography variant="body2">
+                    <strong>Price:</strong>
+                    {" "}
+                    {(suggestion.price != null && suggestion.price <= 100_000_000)
+                      ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(suggestion.price)
+                      : "-"}
+                  </Typography>
                   <Typography variant="body2"><strong>Attachment:</strong> {suggestion.attachment_filename || "-"}</Typography>
                   <Stack direction="row" spacing={1}>
                     <Button

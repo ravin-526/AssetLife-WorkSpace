@@ -51,6 +51,7 @@ import {
   getAssets,
   getMailboxStatus,
   parseSuggestionAttachment,
+  resetUserTestData,
   updateAsset,
   syncMailboxEmails,
 } from "../services/gmail.ts";
@@ -109,6 +110,7 @@ const Assets = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingAsset, setDeletingAsset] = useState<Asset | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [emailPromptOpen, setEmailPromptOpen] = useState(false);
   const [mailboxEmailInput, setMailboxEmailInput] = useState("");
   const [mailboxEmailInputError, setMailboxEmailInputError] = useState("");
@@ -557,6 +559,23 @@ const Assets = () => {
     }
   };
 
+  const handleConfirmResetTestData = async () => {
+    setActionLoading("resetTestData", true);
+    try {
+      setError("");
+      await resetUserTestData();
+      setResetDialogOpen(false);
+      setSelectedSuggestion(null);
+      setParsingMessage("");
+      await Promise.all([loadAssets(), loadSuggestions()]);
+      setMessage("All assets and related testing data have been removed successfully.");
+    } catch {
+      setError("Failed to reset test data. Please try again.");
+    } finally {
+      setActionLoading("resetTestData", false);
+    }
+  };
+
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
   const filteredAssets = useMemo(() => {
@@ -615,6 +634,11 @@ const Assets = () => {
 
   const formatSuggestionPrice = (price?: number) => {
     if (price === null || price === undefined) {
+      return "-";
+    }
+
+    // Guard against implausibly large values produced by parsing errors
+    if (price > 100_000_000) {
       return "-";
     }
 
@@ -805,7 +829,25 @@ const Assets = () => {
                 <div className="col-12 md:col-6">
                   <Typography variant="h6">Asset Grid</Typography>
                 </div>
-                <div className="col-12 md:col-6 flex md:justify-content-end">
+                <div className="col-12 md:col-6">
+                  <Box sx={{ display: "flex", justifyContent: { xs: "flex-start", md: "flex-end" }, gap: 1.5, flexWrap: "wrap" }}>
+                    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                      {/* TEMPORARY TESTING FEATURE */}
+                      {/* This button removes asset-related testing data. */}
+                      {/* It must be removed before production deployment. */}
+                      <Button
+                        variant="contained"
+                        color="error"
+                        onClick={() => setResetDialogOpen(true)}
+                        disabled={isActionLoading("resetTestData")}
+                        sx={{ height: 36 }}
+                      >
+                        {isActionLoading("resetTestData") ? "Resetting..." : "Reset Test Data"}
+                      </Button>
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                        Temporary testing feature
+                      </Typography>
+                    </Box>
                   <Button
                     variant="outlined"
                     endIcon={exporting ? <CircularProgress size={14} /> : <ArrowDropDownIcon />}
@@ -815,6 +857,7 @@ const Assets = () => {
                   >
                     Export
                   </Button>
+                  </Box>
                   <Menu
                     anchorEl={exportAnchorEl}
                     open={Boolean(exportAnchorEl)}
@@ -1006,6 +1049,43 @@ const Assets = () => {
           <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleteLoading}>Cancel</Button>
           <Button variant="contained" color="error" onClick={() => void handleConfirmDelete()} disabled={deleteLoading}>
             {deleteLoading ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={resetDialogOpen}
+        onClose={() => {
+          if (!isActionLoading("resetTestData")) {
+            setResetDialogOpen(false);
+          }
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Reset Test Data</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to remove all assets, suggestions, reminders, and uploaded documents? Your login
+            session and account will not be affected.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setResetDialogOpen(false)}
+            disabled={isActionLoading("resetTestData")}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => {
+              void handleConfirmResetTestData();
+            }}
+            disabled={isActionLoading("resetTestData")}
+          >
+            Confirm Reset
           </Button>
         </DialogActions>
       </Dialog>

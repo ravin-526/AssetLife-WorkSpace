@@ -16,6 +16,11 @@ export type MailboxConnectResponse = GmailConnectResponse;
 export type MailboxStatusResponse = GmailStatusResponse;
 export type MailboxSyncResponse = GmailSyncResponse;
 
+export type ResetUserDataResponse = {
+  success: boolean;
+  message: string;
+};
+
 export type GmailSyncResponse = {
   sync_status: string;
   scanned: number;
@@ -26,6 +31,7 @@ export type GmailSyncResponse = {
   attachments_found?: number;
   attachments_downloaded: number;
   attachments_processed: number;
+  service_receipts_skipped?: number;
   created_suggestions: number;
   assets_detected?: number;
   skipped_duplicates: number;
@@ -69,6 +75,10 @@ export type AssetSuggestion = {
   serial_number?: string;
   model_number?: string;
   invoice_number?: string;
+  invoice_amount?: number;
+  invoice_currency?: string;
+  original_amount?: number;
+  original_currency?: string;
   description?: string;
   notes?: string;
   location?: string;
@@ -240,13 +250,15 @@ export const syncEmails = async (
   days = 10,
   maxResults = 100,
   subjectKeywords: string[] = [],
-  senderAddresses: string[] = []
+  senderAddresses: string[] = [],
+  excludeServiceReceipts = true
 ): Promise<GmailSyncResponse> => {
   const response = await api.post<GmailSyncResponse>("/api/email/scan", {
     days,
     max_results: maxResults,
     subject_keywords: subjectKeywords,
     sender_addresses: senderAddresses,
+    exclude_service_receipts: excludeServiceReceipts,
   });
   return response.data;
 };
@@ -255,9 +267,10 @@ export const syncMailboxEmails = async (
   days = 10,
   maxResults = 100,
   subjectKeywords: string[] = [],
-  senderAddresses: string[] = []
+  senderAddresses: string[] = [],
+  excludeServiceReceipts = true
 ): Promise<MailboxSyncResponse> => {
-  return syncEmails(days, maxResults, subjectKeywords, senderAddresses);
+  return syncEmails(days, maxResults, subjectKeywords, senderAddresses, excludeServiceReceipts);
 };
 
 export const getEmailScans = async (): Promise<EmailScan[]> => {
@@ -272,6 +285,11 @@ export const getAssetSuggestions = async (): Promise<AssetSuggestion[]> => {
 
 export const clearTemporarySuggestions = async (): Promise<{ deleted: number }> => {
   const response = await api.post<{ deleted: number }>("/api/assets/suggestions/clear-temp");
+  return response.data;
+};
+
+export const resetUserTestData = async (): Promise<ResetUserDataResponse> => {
+  const response = await api.post<ResetUserDataResponse>("/api/testing/reset-user-data");
   return response.data;
 };
 

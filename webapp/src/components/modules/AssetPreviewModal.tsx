@@ -806,6 +806,11 @@ const AssetPreviewModal = ({
                             sx={standardFieldSx}
                             fullWidth
                           />
+                          {suggestion?.invoice_currency && suggestion.invoice_currency !== "INR" && suggestion.invoice_amount != null ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ pl: 0.25 }}>
+                              {`Original: ${suggestion.invoice_currency} ${suggestion.invoice_amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} — converted to INR`}
+                            </Typography>
+                          ) : null}
                         </Grid>
                         <Grid item xs={12} md={6}>
                           <TextField
@@ -1251,7 +1256,7 @@ const AssetPreviewModal = ({
                   }}
                 >
                   <Stack spacing={1.25} alignItems="center">
-                    <Alert severity="info">Preview not available for this file type.</Alert>
+                    <Alert severity="info">Preview not available for this file type. Click download to view the attachment.</Alert>
                     <Button
                       size="small"
                       variant="outlined"
@@ -1260,7 +1265,7 @@ const AssetPreviewModal = ({
                         handlePreviewAttachment();
                       }}
                     >
-                      View File
+                      Download Attachment
                     </Button>
                   </Stack>
                 </Box>
