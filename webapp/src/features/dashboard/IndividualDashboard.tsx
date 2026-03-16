@@ -1,3 +1,4 @@
+// Legacy feature component. Active dashboard screen is src/pages/Dashboard.tsx.
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 

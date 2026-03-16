@@ -8,6 +8,7 @@ from app.db.mongo import get_mongo_manager
 from app.routes.asset_suggestions import router as asset_suggestions_router
 from app.routes.assets import router as assets_router
 from app.routes.auth import router as auth_router
+from app.routes.categories import initialize_categories
 from app.routes.categories import router as categories_router
 from app.routes.email_scans import router as email_scans_router
 from app.routes.gmail_integration import router as gmail_integration_router
@@ -47,7 +48,9 @@ app.include_router(reminders_router)
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    await get_mongo_manager().connect()
+    manager = get_mongo_manager()
+    await manager.connect()
+    await initialize_categories(manager.get_database())
     app_logger.info("AssetLife API started")
 
 

@@ -147,25 +147,48 @@ def _to_subcategory(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@router.get("/fresh")
+async def initialize_categories(db) -> None:
+    await _sanitize_and_index_categories(db)
+    await _ensure_sample_data(db)
+
+
+@router.get("")
 async def list_categories(current_user: dict[str, str] = Depends(get_current_user), db=Depends(get_db)) -> list[dict[str, Any]]:
     _ = current_user
     try:
-        await _sanitize_and_index_categories(db)
-        # Ensure categories/subcategories collection has baseline sample documents for testing.
-        await _ensure_sample_data(db)
         rows = await db["categories"].find({"is_active": {"$ne": False}}).sort("category", 1).to_list(length=1000)
-
-        # Fresh endpoint contract: return only {_id, name}.
-        response: list[dict[str, Any]] = []
+        category_ids: list[str] = []
+        normalized_names: dict[str, str] = {}
         for row in rows:
             category_id = str(row.get("_id", "")).strip()
             category_name = _clean_text(row.get("name")) or _clean_text(row.get("category"))
             if not category_id or not category_name:
                 continue
-            response.append({"_id": category_id, "name": category_name})
+            category_ids.append(category_id)
+            normalized_names[category_id] = category_name
 
-        return response
+        subcategories = await db["subcategories"].find(
+            {
+                "category_id": {"$in": category_ids},
+                "is_active": {"$ne": False},
+            }
+        ).to_list(length=5000)
+
+        subcategory_map: dict[str, list[str]] = {category_id: [] for category_id in category_ids}
+        for row in subcategories:
+            category_id = str(row.get("category_id", "")).strip()
+            name = _clean_text(row.get("name"))
+            if not category_id or not name:
+                continue
+            subcategory_map.setdefault(category_id, []).append(name)
+
+        return [
+            {
+                "category": normalized_names[category_id],
+                "subcategories": sorted(subcategory_map.get(category_id, []), key=str.lower),
+            }
+            for category_id in category_ids
+        ]
     except HTTPException:
         raise
     except Exception as error:  # pragma: no cover
@@ -175,7 +198,6 @@ async def list_categories(current_user: dict[str, str] = Depends(get_current_use
 @router.post("")
 async def create_category(payload: dict[str, Any], current_user: dict[str, str] = Depends(get_current_user), db=Depends(get_db)) -> dict[str, Any]:
     _ = current_user
-    await _sanitize_and_index_categories(db)
 
     name = _clean_text(payload.get("name"))
     if not name:
@@ -216,7 +238,7 @@ async def create_category(payload: dict[str, Any], current_user: dict[str, str] 
         raise
 
 
-@router.get("/fresh/{category_id}/subcategories")
+@router.get("/{category_id}/subcategories")
 async def list_subcategories(category_id: str, current_user: dict[str, str] = Depends(get_current_user), db=Depends(get_db)) -> list[dict[str, Any]]:
     _ = current_user
     try:

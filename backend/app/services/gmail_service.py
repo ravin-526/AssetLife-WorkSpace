@@ -5,7 +5,6 @@ import json
 import os
 import secrets
 import urllib.parse
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -13,6 +12,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
 from fastapi import HTTPException
+import httpx
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
@@ -57,23 +57,36 @@ class GmailService:
             return None
 
     @staticmethod
-    def _safe_json_request(url: str, *, method: str = "GET", headers: dict[str, str] | None = None, data: dict[str, Any] | None = None) -> dict[str, Any]:
-        payload_bytes: bytes | None = None
+    async def _safe_json_request(
+        url: str,
+        *,
+        method: str = "GET",
+        headers: dict[str, str] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         request_headers = dict(headers or {})
+        request_kwargs: dict[str, Any] = {
+            "method": method,
+            "url": url,
+            "headers": request_headers,
+        }
 
         if data is not None:
-            encoded = urllib.parse.urlencode(data)
-            payload_bytes = encoded.encode("utf-8")
+            request_kwargs["data"] = data
             request_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
 
-        request = urllib.request.Request(url=url, data=payload_bytes, headers=request_headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                response_body = response.read().decode("utf-8")
-                parsed = json.loads(response_body) if response_body else {}
-                return parsed if isinstance(parsed, dict) else {}
-        except Exception as error:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.request(**request_kwargs)
+                response.raise_for_status()
+        except httpx.HTTPError as error:
             raise HTTPException(status_code=502, detail=f"Gmail API request failed: {error}") from error
+
+        try:
+            parsed = response.json() if response.content else {}
+        except json.JSONDecodeError:
+            parsed = {}
+        return parsed if isinstance(parsed, dict) else {}
 
     def _is_oauth_configured(self) -> bool:
         return bool(
@@ -261,7 +274,7 @@ class GmailService:
             "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         }
-        token_response = self._safe_json_request(self.TOKEN_ENDPOINT, method="POST", data=token_payload)
+        token_response = await self._safe_json_request(self.TOKEN_ENDPOINT, method="POST", data=token_payload)
 
         access_token = str(token_response.get("access_token") or "")
         if not access_token:
@@ -354,7 +367,7 @@ class GmailService:
             "refresh_token": refresh_token,
             "grant_type": "refresh_token",
         }
-        token_response = self._safe_json_request(self.TOKEN_ENDPOINT, method="POST", data=token_payload)
+        token_response = await self._safe_json_request(self.TOKEN_ENDPOINT, method="POST", data=token_payload)
 
         refreshed_token = str(token_response.get("access_token") or "")
         if not refreshed_token:
@@ -374,7 +387,7 @@ class GmailService:
     async def search_messages(self, access_token: str, query: str, max_results: int = 100) -> list[str]:
         params = urllib.parse.urlencode({"q": query, "maxResults": max_results})
         url = f"{self.API_BASE}/messages?{params}"
-        payload = self._safe_json_request(url, headers=self._gmail_headers(access_token))
+        payload = await self._safe_json_request(url, headers=self._gmail_headers(access_token))
         messages = payload.get("messages")
         if not isinstance(messages, list):
             return []
@@ -386,11 +399,11 @@ class GmailService:
 
     async def get_message(self, access_token: str, message_id: str) -> dict[str, Any]:
         url = f"{self.API_BASE}/messages/{message_id}?format=full"
-        return self._safe_json_request(url, headers=self._gmail_headers(access_token))
+        return await self._safe_json_request(url, headers=self._gmail_headers(access_token))
 
     async def get_attachment_data(self, access_token: str, message_id: str, attachment_id: str) -> bytes:
         url = f"{self.API_BASE}/messages/{message_id}/attachments/{attachment_id}"
-        payload = self._safe_json_request(url, headers=self._gmail_headers(access_token))
+        payload = await self._safe_json_request(url, headers=self._gmail_headers(access_token))
         encoded_data = payload.get("data")
         if not isinstance(encoded_data, str) or not encoded_data:
             return b""

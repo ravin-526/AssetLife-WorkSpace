@@ -8,3 +8,7 @@ python-jose
 loguru
 cryptography
 openpyxl
+httpx
+PyPDF2
+Pillow
+pytesseract

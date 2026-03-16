@@ -1,3 +1,4 @@
+// Legacy feature component. Active dashboard screen is src/pages/Dashboard.tsx.
 import theme from "../../styles/theme";
 import useUserStore from "../../store/userStore";
 

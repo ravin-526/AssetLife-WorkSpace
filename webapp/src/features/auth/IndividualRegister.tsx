@@ -1,3 +1,4 @@
+// Legacy feature component. Active registration screen is src/pages/IndividualRegister.tsx.
 import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 

@@ -309,3 +309,18 @@
 {"timestamp": "2026-03-15T05:03:55.882745+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
 {"timestamp": "2026-03-15T05:28:10.862371+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
 {"timestamp": "2026-03-15T06:30:44.448960+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-16T19:24:26.621774+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-16T19:24:27.839684+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-16T19:24:28.125884+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-16T19:24:32.984496+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-16T19:24:33.345159+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-16T19:24:45.470255+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-16T19:24:46.629036+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-16T19:24:55.070127+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-16T19:24:55.455536+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-16T19:25:12.438599+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-16T19:30:55.745607+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}
+{"timestamp": "2026-03-16T19:31:41.270343+00:00", "level": "INFO", "logger": "assetlife", "message": "OTP generated for individual login"}
+{"timestamp": "2026-03-16T19:31:42.606799+00:00", "level": "INFO", "logger": "assetlife", "message": "Individual OTP verified"}
+{"timestamp": "2026-03-16T19:34:44.163670+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API stopped"}
+{"timestamp": "2026-03-16T19:34:44.532968+00:00", "level": "INFO", "logger": "assetlife", "message": "AssetLife API started"}

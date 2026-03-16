@@ -122,6 +122,7 @@ async def parse_suggestion(suggestion_id: str, current_user: dict[str, str] = De
         "vendor": parsed.get("vendor") or item.get("vendor"),
         "price": parsed.get("price") if parsed.get("price") is not None else item.get("price"),
         "purchase_date": parsed.get("purchase_date") or item.get("purchase_date"),
+        "invoice_number": parsed.get("invoice_number") or item.get("invoice_number"),
         "warranty": parsed.get("warranty") or item.get("warranty"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }

@@ -1,3 +1,4 @@
+// Legacy router kept for reference only. Active runtime router is src/App.tsx.
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import PrivateRoute from "./components/PrivateRoute";

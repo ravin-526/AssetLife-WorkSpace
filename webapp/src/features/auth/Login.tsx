@@ -1,3 +1,4 @@
+// Legacy feature component. Active login screen is src/pages/IndividualLogin.tsx.
 import { FormEvent, useMemo, useState } from "react";
 
 import OtpInput from "../../components/OtpInput.tsx";

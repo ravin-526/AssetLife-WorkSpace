@@ -1,5 +1,4 @@
-from datetime import datetime, timedelta, timezone
-import random
+from datetime import datetime, timezone
 import re
 from typing import Any
 
@@ -16,11 +15,9 @@ from app.core.jwt import create_access_token
 from app.core.logger import app_logger
 from app.core.security import get_current_user
 from app.db.mongo import get_db
+from app.services.otp_service import otp_service
 
 router = APIRouter(prefix="/individual", tags=["Individual"])
-
-_otp_store: dict[str, dict[str, datetime | str]] = {}
-_OTP_TTL_SECONDS = 30
 
 
 class IndividualRegisterRequest(BaseModel):
@@ -105,11 +102,7 @@ async def register_individual(payload: IndividualRegisterRequest, db=Depends(get
     user_id = str(result.inserted_id)
     app_logger.info("Individual user registered", extra={"user_id": user_id})
 
-    otp = str(random.randint(100000, 999999))
-    _otp_store[mobile_hash] = {
-        "otp": otp,
-        "created_at": datetime.utcnow(),
-    }
+    otp = otp_service.generate_otp(mobile_hash)
 
     if settings.DEBUG:
         print(f"Generated OTP for {payload.mobile}: {otp}")
@@ -132,11 +125,15 @@ async def send_otp(payload: SendOtpRequest, db=Depends(get_db)) -> dict[str, str
     if not user:
         raise NotFoundError("Individual user not found for this mobile")
 
-    otp = str(random.randint(100000, 999999))
-    _otp_store[mobile_hash] = {
-        "otp": otp,
-        "created_at": datetime.utcnow(),
-    }
+    allowed, retry_after_seconds = otp_service.register_otp_request(mobile_hash)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many OTP requests. Try again in {retry_after_seconds} seconds.",
+            headers={"Retry-After": str(retry_after_seconds)},
+        )
+
+    otp = otp_service.generate_otp(mobile_hash)
 
     if settings.DEBUG:
         print(f"Generated OTP for {payload.mobile}: {otp}")
@@ -153,20 +150,12 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
     collection = db["individual_users"]
     mobile_hash = hash_value(payload.mobile)
 
-    otp_record = _otp_store.get(mobile_hash)
-    if not otp_record:
+    verification_status = otp_service.verify_otp(mobile_hash, payload.otp)
+    if verification_status == "not_found":
         raise AuthenticationError("OTP not found. Please request a new OTP")
-
-    created_at = otp_record.get("created_at")
-    if not isinstance(created_at, datetime):
-        _otp_store.pop(mobile_hash, None)
+    if verification_status == "expired":
         raise HTTPException(status_code=400, detail="OTP expired. Please request a new OTP.")
-
-    if datetime.utcnow() - created_at > timedelta(seconds=_OTP_TTL_SECONDS):
-        _otp_store.pop(mobile_hash, None)
-        raise HTTPException(status_code=400, detail="OTP expired. Please request a new OTP.")
-
-    if otp_record.get("otp") != payload.otp:
+    if verification_status == "invalid":
         return JSONResponse(
             status_code=400,
             content={
@@ -189,8 +178,6 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
             }
         },
     )
-
-    _otp_store.pop(mobile_hash, None)
 
     token = create_access_token(subject=user_id, role="individual")
     app_logger.info("Individual OTP verified", extra={"user_id": user_id})

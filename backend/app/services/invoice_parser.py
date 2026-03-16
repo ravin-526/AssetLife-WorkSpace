@@ -6,6 +6,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from PyPDF2 import PdfReader
+
+try:
+    import pytesseract
+    from PIL import Image
+except Exception:  # pragma: no cover
+    pytesseract = None
+    Image = None
+
 
 @dataclass
 class ParsedAttachment:
@@ -17,6 +26,10 @@ class ParsedAttachment:
 class InvoiceParserService:
     PRICE_PATTERN = re.compile(r"(?:rs\.?|inr|usd|eur|total)\s*[:\-]?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)", re.IGNORECASE)
     DATE_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2}|\d{2}[/-]\d{2}[/-]\d{4})")
+    INVOICE_NUMBER_PATTERN = re.compile(
+        r"(?:invoice\s*(?:no|number|#)?|inv\s*(?:no|#)?)\s*[:#\-]?\s*([A-Za-z0-9\-_/]{4,40})",
+        re.IGNORECASE,
+    )
 
     @staticmethod
     def _safe_float(value: str | None) -> float | None:
@@ -51,6 +64,65 @@ class InvoiceParserService:
             domain = raw.split("@", 1)[1]
             return domain.split(".", 1)[0].replace("-", " ").title()
         return raw
+
+    @staticmethod
+    def _extract_text_from_pdf(file_path: Path) -> str:
+        try:
+            reader = PdfReader(str(file_path))
+        except Exception:
+            return ""
+
+        pages: list[str] = []
+        for page in reader.pages:
+            try:
+                pages.append(page.extract_text() or "")
+            except Exception:
+                continue
+        return "\n".join(pages).strip()
+
+    @staticmethod
+    def _extract_text_from_image(file_path: Path) -> str:
+        if not pytesseract or not Image:
+            return ""
+
+        try:
+            with Image.open(file_path) as image:
+                return str(pytesseract.image_to_string(image) or "").strip()
+        except Exception:
+            return ""
+
+    def _extract_text_from_attachment(self, file_path: Path) -> str:
+        suffix = file_path.suffix.lower()
+        if suffix == ".pdf":
+            return self._extract_text_from_pdf(file_path)
+        if suffix in {".png", ".jpg", ".jpeg"}:
+            return self._extract_text_from_image(file_path)
+        return ""
+
+    @staticmethod
+    def _guess_product_name_from_text(extracted_text: str) -> str | None:
+        if not extracted_text:
+            return None
+
+        match = re.search(
+            r"(?:product|item|description|asset)\s*[:\-]\s*([^\n\r]{3,120})",
+            extracted_text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            value = re.sub(r"\s+", " ", match.group(1)).strip(" -")
+            if value:
+                return value[:120]
+        return None
+
+    @staticmethod
+    def _extract_invoice_number(extracted_text: str) -> str | None:
+        if not extracted_text:
+            return None
+        match = InvoiceParserService.INVOICE_NUMBER_PATTERN.search(extracted_text)
+        if not match:
+            return None
+        return match.group(1).strip()
 
     @staticmethod
     def _guess_product_name(subject: str | None, fallback_name: str | None, file_path: Path) -> str:
@@ -123,14 +195,22 @@ class InvoiceParserService:
         return [item], attachments, metadata
 
     def parse_attachment(self, *, file_path: Path, sender: str | None, subject: str | None, fallback_name: str | None) -> dict[str, Any]:
-        text_seed = f"{subject or ''} {file_path.name}"
-        price_match = self.PRICE_PATTERN.search(text_seed)
-        date_match = self.DATE_PATTERN.search(text_seed)
+        extracted_text = self._extract_text_from_attachment(file_path)
+        text_seed = f"{subject or ''} {file_path.name}".strip()
+        parser_text = f"{text_seed}\n{extracted_text}" if extracted_text else text_seed
+
+        price_match = self.PRICE_PATTERN.search(parser_text)
+        date_match = self.DATE_PATTERN.search(parser_text)
+        invoice_number = self._extract_invoice_number(parser_text)
+        product_name_from_text = self._guess_product_name_from_text(extracted_text)
+
         return {
-            "product_name": self._guess_product_name(subject=subject, fallback_name=fallback_name, file_path=file_path),
+            "product_name": product_name_from_text
+            or self._guess_product_name(subject=subject, fallback_name=fallback_name, file_path=file_path),
             "vendor": self._email_sender_name(sender),
             "brand": None,
             "price": self._safe_float(price_match.group(1) if price_match else None),
             "purchase_date": self._normalize_date(date_match.group(1) if date_match else None),
+            "invoice_number": invoice_number,
             "warranty": None,
         }
