@@ -105,6 +105,8 @@ const Assets = () => {
     purchase_date: "",
     category: "",
     subcategory: "",
+    customCategory: "",
+    customSubcategory: "",
   });
   const [assetCategories, setAssetCategories] = useState<{ category: string; subcategories: string[] }[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -419,6 +421,8 @@ const Assets = () => {
       purchase_date: asset.purchase_date ? asset.purchase_date.slice(0, 10) : "",
       category: asset.category || "",
       subcategory: asset.subcategory || "",
+      customCategory: "",
+      customSubcategory: "",
     });
     setEditDialogOpen(true);
   };
@@ -513,14 +517,31 @@ const Assets = () => {
     try {
       setEditSaving(true);
       setError("");
+      const selectedCategory = editForm.category.trim();
+      const selectedSubcategory = editForm.subcategory.trim();
+      const resolvedCategory = selectedCategory.toLowerCase() === "other"
+        ? editForm.customCategory.trim()
+        : selectedCategory;
+      const resolvedSubcategory = selectedSubcategory.toLowerCase() === "other"
+        ? editForm.customSubcategory.trim()
+        : selectedSubcategory;
+
+      if (selectedCategory.toLowerCase() === "other" && !resolvedCategory) {
+        throw new Error("Please enter a custom category");
+      }
+
+      if (selectedSubcategory.toLowerCase() === "other" && !resolvedSubcategory) {
+        throw new Error("Please enter a custom subcategory");
+      }
+
       const payload = {
         name: editForm.name.trim() || undefined,
         brand: editForm.brand.trim() || undefined,
         vendor: editForm.vendor.trim() || undefined,
         price: editForm.price ? Number(editForm.price) : undefined,
         purchase_date: editForm.purchase_date || undefined,
-        category: editForm.category.trim() || undefined,
-        subcategory: editForm.subcategory.trim() || undefined,
+        category: resolvedCategory || undefined,
+        subcategory: resolvedSubcategory || undefined,
       };
       await updateAsset(editingAsset.id, payload);
       await loadAssets();
@@ -1008,18 +1029,42 @@ const Assets = () => {
               select
               label="Category"
               value={editForm.category}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, category: e.target.value, subcategory: "" }))}
+              onChange={(e) => {
+                const nextCategory = e.target.value;
+                setEditForm((prev) => ({
+                  ...prev,
+                  category: nextCategory,
+                  subcategory: "",
+                  customCategory: nextCategory.toLowerCase() === "other" ? prev.customCategory : "",
+                  customSubcategory: "",
+                }));
+              }}
               fullWidth
             >
               {editCategoryOptions.map((option) => (
                 <MenuItem key={option} value={option}>{option}</MenuItem>
               ))}
             </TextField>
+            {editForm.category === "Other" ? (
+              <TextField
+                label="Enter Category"
+                value={editForm.customCategory}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, customCategory: e.target.value }))}
+                fullWidth
+              />
+            ) : null}
             <TextField
               select
               label="SubCategory"
               value={editForm.subcategory}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, subcategory: e.target.value }))}
+              onChange={(e) => {
+                const nextSubcategory = e.target.value;
+                setEditForm((prev) => ({
+                  ...prev,
+                  subcategory: nextSubcategory,
+                  customSubcategory: nextSubcategory.toLowerCase() === "other" ? prev.customSubcategory : "",
+                }));
+              }}
               fullWidth
               disabled={!editForm.category}
             >
@@ -1027,6 +1072,14 @@ const Assets = () => {
                 <MenuItem key={option} value={option}>{option}</MenuItem>
               ))}
             </TextField>
+            {editForm.subcategory === "Other" ? (
+              <TextField
+                label="Enter SubCategory"
+                value={editForm.customSubcategory}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, customSubcategory: e.target.value }))}
+                fullWidth
+              />
+            ) : null}
             <TextField label="Vendor" value={editForm.vendor} onChange={(e) => setEditForm((prev) => ({ ...prev, vendor: e.target.value }))} fullWidth />
             <TextField label="Price" type="number" value={editForm.price} onChange={(e) => setEditForm((prev) => ({ ...prev, price: e.target.value }))} fullWidth />
             <TextField label="Purchase Date" type="date" value={editForm.purchase_date} onChange={(e) => setEditForm((prev) => ({ ...prev, purchase_date: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />

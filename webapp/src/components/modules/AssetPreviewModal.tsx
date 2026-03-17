@@ -22,6 +22,7 @@ import {
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
 import { useEffect, useMemo, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
@@ -37,7 +38,7 @@ import {
 
 type AssetPreviewModalProps = {
   open: boolean;
-  suggestion: AssetSuggestion | null;
+  suggestion?: AssetSuggestion | null;
   inlineMode?: boolean;
   showTitle?: boolean;
   collapseDocumentViewer?: boolean;
@@ -48,6 +49,15 @@ type AssetPreviewModalProps = {
   isDocumentActionLoading?: (key: string) => boolean;
   onViewUploadedDocument?: (document: UploadedAssetDocument) => void;
   onDeleteUploadedDocument?: (documentId: string) => void;
+  suggestions?: AssetSuggestion[];
+  currentIndex?: number;
+  setCurrentIndex?: Dispatch<SetStateAction<number>>;
+  navigation?: {
+    currentIndex: number;
+    total: number;
+    onPrevious: () => void;
+    onNext: () => void;
+  };
   onClose: () => void;
   onSave: (payload: {
     product_name?: string;
@@ -71,7 +81,7 @@ type AssetPreviewModalProps = {
 
 const AssetPreviewModal = ({
   open,
-  suggestion,
+  suggestion: suggestionProp = null,
   inlineMode = false,
   showTitle = true,
   collapseDocumentViewer = false,
@@ -82,6 +92,10 @@ const AssetPreviewModal = ({
   isDocumentActionLoading,
   onViewUploadedDocument,
   onDeleteUploadedDocument,
+  suggestions = [],
+  currentIndex = 0,
+  setCurrentIndex,
+  navigation,
   onClose,
   onSave,
 }: AssetPreviewModalProps) => {
@@ -105,6 +119,8 @@ const AssetPreviewModal = ({
     assigned_user: "",
     notes: "",
     description: "",
+    custom_category: "",
+    custom_subcategory: "",
   });
   const [warrantyEnabled, setWarrantyEnabled] = useState(false);
   const [warrantyDetails, setWarrantyDetails] = useState({
@@ -145,6 +161,28 @@ const AssetPreviewModal = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [basicDetailsError, setBasicDetailsError] = useState("");
   const [categories, setCategories] = useState<AssetCategoryOption[]>([]);
+  const [initialSnapshot, setInitialSnapshot] = useState("");
+
+  const total = suggestions.length > 0 ? suggestions.length : (suggestionProp ? 1 : 0);
+  const normalizedIndex = total > 0 ? Math.min(Math.max(currentIndex, 0), total - 1) : 0;
+
+  const suggestion = useMemo(() => {
+    return suggestions?.[normalizedIndex] ?? suggestionProp ?? null;
+  }, [normalizedIndex, suggestionProp, suggestions]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    console.log("MODAL DEBUG:", {
+      total,
+      currentIndex,
+      disablePrevious: normalizedIndex === 0,
+      disableNext: normalizedIndex === total - 1,
+      suggestionName: suggestion?.product_name,
+    });
+  }, [currentIndex, normalizedIndex, open, suggestion, total]);
 
   const getRecordValue = (record: Record<string, unknown>, keys: string[]): string | undefined => {
     for (const key of keys) {
@@ -228,7 +266,7 @@ const AssetPreviewModal = ({
     if (!open) {
       return;
     }
-    setForm({
+    const initialForm = {
       product_name: suggestion?.product_name ?? "",
       brand: suggestion?.brand ?? "",
       vendor: suggestion?.vendor ?? "",
@@ -243,7 +281,10 @@ const AssetPreviewModal = ({
       assigned_user: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["assigned_user", "assigned_to"]) ?? "",
       notes: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["notes"]) ?? "",
       description: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["description"]) ?? "",
-    });
+      custom_category: "",
+      custom_subcategory: "",
+    };
+    setForm(initialForm);
 
     const record = (suggestion as unknown as Record<string, unknown>) || {};
     const warranty = getObjectRecordValue(record, ["warranty_details", "warranty"]);
@@ -251,50 +292,73 @@ const AssetPreviewModal = ({
     const warrantyEnabledFromSuggestion = warranty
       ? (getBooleanRecordValue(warranty, ["available"]) ?? false)
       : false;
-    setWarrantyEnabled(warrantyEnabledFromSuggestion);
-    setWarrantyDetails({
+    const initialWarrantyDetails = {
       provider: warranty ? (getRecordValue(warranty, ["provider"]) ?? "") : "",
       type: warranty ? (getRecordValue(warranty, ["type"]) ?? "manufacturer") : "manufacturer",
       start_date: warranty ? (getRecordValue(warranty, ["start_date"]) ?? "") : "",
       end_date: warranty ? (getRecordValue(warranty, ["end_date"]) ?? "") : "",
       notes: warranty ? (getRecordValue(warranty, ["notes"]) ?? "") : "",
-    });
-    setWarrantyReminderPrefs({
+    };
+    setWarrantyEnabled(warrantyEnabledFromSuggestion);
+    setWarrantyDetails(initialWarrantyDetails);
+    const initialWarrantyReminderPrefs = {
       d30: warrantyReminders ? (getBooleanRecordValue(warrantyReminders, ["thirty_days_before"]) ?? true) : true,
       d7: warrantyReminders ? (getBooleanRecordValue(warrantyReminders, ["seven_days_before"]) ?? true) : true,
       onExpiry: warrantyReminders ? (getBooleanRecordValue(warrantyReminders, ["on_expiry"]) ?? true) : true,
-    });
+    };
+    setWarrantyReminderPrefs(initialWarrantyReminderPrefs);
 
     const insurance = getObjectRecordValue(record, ["insurance_details", "insurance"]);
     const insuranceReminders = insurance ? getObjectRecordValue(insurance, ["reminders"]) : undefined;
     const insuranceEnabledFromSuggestion = insurance
       ? (getBooleanRecordValue(insurance, ["available"]) ?? false)
       : false;
-    setInsuranceEnabled(insuranceEnabledFromSuggestion);
-    setInsuranceDetails({
+    const initialInsuranceDetails = {
       provider: insurance ? (getRecordValue(insurance, ["provider"]) ?? "") : "",
       policy_number: insurance ? (getRecordValue(insurance, ["policy_number"]) ?? "") : "",
       start_date: insurance ? (getRecordValue(insurance, ["start_date"]) ?? "") : "",
       expiry_date: insurance ? (getRecordValue(insurance, ["expiry_date"]) ?? "") : "",
       premium_amount: insurance ? (getRecordValue(insurance, ["premium_amount"]) ?? "") : "",
       coverage_notes: insurance ? (getRecordValue(insurance, ["coverage_notes", "notes"]) ?? "") : "",
-    });
-    setInsuranceReminderPrefs({
+    };
+    setInsuranceEnabled(insuranceEnabledFromSuggestion);
+    setInsuranceDetails(initialInsuranceDetails);
+    const initialInsuranceReminderPrefs = {
       d45: insuranceReminders ? (getBooleanRecordValue(insuranceReminders, ["forty_five_days_before"]) ?? true) : true,
       d15: insuranceReminders ? (getBooleanRecordValue(insuranceReminders, ["fifteen_days_before"]) ?? true) : true,
-    });
+    };
+    setInsuranceReminderPrefs(initialInsuranceReminderPrefs);
 
     const service = getObjectRecordValue(record, ["service_details", "service"]);
     const serviceEnabledFromSuggestion = service
       ? (getBooleanRecordValue(service, ["required"]) ?? false)
       : false;
-    setServiceEnabled(serviceEnabledFromSuggestion);
-    setServiceDetails({
+    const initialServiceDetails = {
       frequency: service ? (getRecordValue(service, ["frequency"]) ?? "monthly") : "monthly",
       custom_interval_days: service ? (getRecordValue(service, ["custom_interval_days"]) ?? "") : "",
-    });
-    setServiceReminderEnabled(service ? (getBooleanRecordValue(service, ["reminder_enabled"]) ?? true) : true);
+    };
+    const initialServiceReminderEnabled = service ? (getBooleanRecordValue(service, ["reminder_enabled"]) ?? true) : true;
+    setServiceEnabled(serviceEnabledFromSuggestion);
+    setServiceDetails(initialServiceDetails);
+    setServiceReminderEnabled(initialServiceReminderEnabled);
     setSupportingDocuments([]);
+
+    setInitialSnapshot(
+      JSON.stringify({
+        form: initialForm,
+        warrantyEnabled: warrantyEnabledFromSuggestion,
+        warrantyDetails: initialWarrantyDetails,
+        warrantyReminderPrefs: initialWarrantyReminderPrefs,
+        insuranceEnabled: insuranceEnabledFromSuggestion,
+        insuranceDetails: initialInsuranceDetails,
+        insuranceReminderPrefs: initialInsuranceReminderPrefs,
+        serviceEnabled: serviceEnabledFromSuggestion,
+        serviceDetails: initialServiceDetails,
+        serviceReminderEnabled: initialServiceReminderEnabled,
+        selectedSupportingDocuments: [],
+        locallyDeletedDocumentIds: [],
+      })
+    );
   }, [open, suggestion]);
 
   useEffect(() => {
@@ -492,12 +556,63 @@ const AssetPreviewModal = ({
     }
   };
 
+  const hasUnsavedChanges = (): boolean => {
+    if (!open) {
+      return false;
+    }
+
+    const currentSnapshot = JSON.stringify({
+      form,
+      warrantyEnabled,
+      warrantyDetails,
+      warrantyReminderPrefs,
+      insuranceEnabled,
+      insuranceDetails,
+      insuranceReminderPrefs,
+      serviceEnabled,
+      serviceDetails,
+      serviceReminderEnabled,
+      selectedSupportingDocuments: supportingDocuments.map((file) => ({
+        name: file.name,
+        size: file.size,
+        lastModified: file.lastModified,
+      })),
+      locallyDeletedDocumentIds,
+    });
+
+    return Boolean(initialSnapshot) && currentSnapshot !== initialSnapshot;
+  };
+
+  const handleNavigate = (direction: "previous" | "next") => {
+    const proceed = !hasUnsavedChanges() || window.confirm("You have unsaved changes. Continue?");
+    if (!proceed) {
+      return;
+    }
+
+    if (navigation) {
+      if (direction === "previous") {
+        navigation.onPrevious();
+        return;
+      }
+
+      navigation.onNext();
+      return;
+    }
+
+    handleFallbackNavigation(direction);
+  };
+
   const handleSave = async () => {
-    if (!form.category.trim()) {
+    const rawCategory = form.category.trim();
+    const rawSubcategory = form.subcategory.trim();
+    const finalCategory = rawCategory.toLowerCase() === "other" ? form.custom_category.trim() : rawCategory;
+    const finalSubcategory = rawSubcategory.toLowerCase() === "other" ? form.custom_subcategory.trim() : rawSubcategory;
+
+    if (!finalCategory) {
       setBasicDetailsError("Category is required");
       return;
     }
-    if (!form.subcategory.trim()) {
+    if (!finalSubcategory) {
       setBasicDetailsError("SubCategory is required");
       return;
     }
@@ -509,8 +624,8 @@ const AssetPreviewModal = ({
       vendor: form.vendor || undefined,
       price: form.price ? Number(form.price) : undefined,
       purchase_date: form.purchase_date || undefined,
-      category: form.category || undefined,
-      subcategory: form.subcategory || undefined,
+      category: finalCategory || undefined,
+      subcategory: finalSubcategory || undefined,
       serial_number: form.serial_number || undefined,
       model_number: form.model_number || undefined,
       invoice_number: form.invoice_number || undefined,
@@ -659,6 +774,22 @@ const AssetPreviewModal = ({
     return options;
   }, [categories, form.category]);
 
+  const disablePrevious = normalizedIndex === 0;
+  const disableNext = normalizedIndex === total - 1;
+
+  const handleFallbackNavigation = (direction: "previous" | "next") => {
+    if (!setCurrentIndex) {
+      return;
+    }
+
+    setCurrentIndex((prev) => {
+      if (direction === "previous") {
+        return Math.max(prev - 1, 0);
+      }
+      return Math.min(prev + 1, Math.max(total - 1, 0));
+    });
+  };
+
   return (
     <Dialog
       open={open}
@@ -691,7 +822,11 @@ const AssetPreviewModal = ({
         },
       }}
     >
-      {showTitle ? <DialogTitle>Asset Preview</DialogTitle> : null}
+      {showTitle ? (
+        <DialogTitle>
+          {total > 0 ? `Asset Preview - Suggestion ${normalizedIndex + 1} of ${total}` : "Asset Preview"}
+        </DialogTitle>
+      ) : null}
       <DialogContent sx={{ overflow: inlineMode ? "visible" : "hidden", height: inlineMode ? "auto" : { xs: "70vh", md: "72vh" } }}>
         <Box sx={{ mt: 1, minHeight: 0, height: "100%" }}>
           <Box
@@ -745,7 +880,13 @@ const AssetPreviewModal = ({
                             onChange={(event) => {
                               const selectedCategory = event.target.value;
                               setBasicDetailsError("");
-                              setForm((prev) => ({ ...prev, category: selectedCategory, subcategory: "" }));
+                              setForm((prev) => ({
+                                ...prev,
+                                category: selectedCategory,
+                                subcategory: "",
+                                custom_category: selectedCategory.toLowerCase() === "other" ? prev.custom_category : "",
+                                custom_subcategory: "",
+                              }));
                             }}
                             sx={standardFieldSx}
                             fullWidth
@@ -755,6 +896,21 @@ const AssetPreviewModal = ({
                             ))}
                           </TextField>
                         </Grid>
+                        {form.category === "Other" ? (
+                          <Grid item xs={12} md={6}>
+                            <TextField
+                              size="small"
+                              label="Enter Category *"
+                              value={form.custom_category}
+                              onChange={(event) => {
+                                setBasicDetailsError("");
+                                setForm((prev) => ({ ...prev, custom_category: event.target.value }));
+                              }}
+                              sx={standardFieldSx}
+                              fullWidth
+                            />
+                          </Grid>
+                        ) : null}
                         <Grid item xs={12} md={6}>
                           <TextField
                             size="small"
@@ -763,7 +919,12 @@ const AssetPreviewModal = ({
                             value={form.subcategory}
                             onChange={(event) => {
                               setBasicDetailsError("");
-                              setForm((prev) => ({ ...prev, subcategory: event.target.value }));
+                              const selectedSubcategory = event.target.value;
+                              setForm((prev) => ({
+                                ...prev,
+                                subcategory: selectedSubcategory,
+                                custom_subcategory: selectedSubcategory.toLowerCase() === "other" ? prev.custom_subcategory : "",
+                              }));
                             }}
                             sx={standardFieldSx}
                             fullWidth
@@ -774,6 +935,21 @@ const AssetPreviewModal = ({
                             ))}
                           </TextField>
                         </Grid>
+                        {form.subcategory === "Other" ? (
+                          <Grid item xs={12} md={6}>
+                            <TextField
+                              size="small"
+                              label="Enter SubCategory *"
+                              value={form.custom_subcategory}
+                              onChange={(event) => {
+                                setBasicDetailsError("");
+                                setForm((prev) => ({ ...prev, custom_subcategory: event.target.value }));
+                              }}
+                              sx={standardFieldSx}
+                              fullWidth
+                            />
+                          </Grid>
+                        ) : null}
                         <Grid item xs={12} md={6}>
                           <TextField
                             size="small"
@@ -1292,6 +1468,25 @@ const AssetPreviewModal = ({
         </Box>
       </DialogContent>
       <DialogActions>
+        <Button
+          onClick={() => {
+            handleNavigate("previous");
+          }}
+          disabled={saveLoading || disablePrevious}
+        >
+          Previous
+        </Button>
+        <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+          {Math.min(normalizedIndex + 1, Math.max(total, 1))} of {Math.max(total, 1)}
+        </Typography>
+        <Button
+          onClick={() => {
+            handleNavigate("next");
+          }}
+          disabled={saveLoading || disableNext}
+        >
+          Next
+        </Button>
         <Button onClick={onClose} disabled={saveLoading}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saveLoading}>
           {saveLoading ? "Saving..." : "Save Asset"}

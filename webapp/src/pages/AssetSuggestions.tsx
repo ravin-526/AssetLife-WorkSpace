@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -9,14 +9,17 @@ import {
   Typography,
 } from "@mui/material";
 
+import RefreshIcon from "@mui/icons-material/Refresh";
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
-import { AssetLifecyclePayload, AssetSuggestion, createAsset, getAssetSuggestions, parseSuggestionAttachment, rejectSuggestion } from "../services/gmail.ts";
+import { AssetLifecyclePayload, AssetSuggestion, createAsset, getAssetSuggestions, parseSuggestionAttachment } from "../services/gmail.ts";
 
 const AssetSuggestions = () => {
   const [suggestions, setSuggestions] = useState<AssetSuggestion[]>([]);
-  const [selectedSuggestion, setSelectedSuggestion] = useState<AssetSuggestion | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [parsingSuggestionId, setParsingSuggestionId] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
   const [parsingMessage, setParsingMessage] = useState("");
@@ -26,10 +29,10 @@ const AssetSuggestions = () => {
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
   useAutoDismissMessage(error, setError, { delay: 4000 });
 
-  const loadSuggestions = async () => {
+  const loadSuggestions = useCallback(async () => {
     const response = await getAssetSuggestions();
     setSuggestions(response);
-  };
+  }, []);
 
   useEffect(() => {
     const run = async () => {
@@ -44,26 +47,45 @@ const AssetSuggestions = () => {
     };
 
     void run();
-  }, []);
+  }, [loadSuggestions]);
 
-  const handleConfirm = async (suggestion: AssetSuggestion) => {
+  // NOTE: No auto-polling. list_suggestions returns confirmed (already-saved) items too
+  // (status != "rejected"), so a background refresh would restore saved items into
+  // the list as "Already Added", which is confusing. Manual refresh is intentional
+  // and safe because the user expects to see the current server state when they click it.
+
+  const handleRefresh = async () => {
     try {
+      setRefreshing(true);
+      await loadSuggestions();
+    } catch {
+      setError("Failed to refresh suggestions");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleConfirm = async (suggestion: AssetSuggestion, index: number) => {
+    try {
+      setSelectedSuggestionIndex(index);
       setParsingSuggestionId(suggestion.id);
       setParsingMessage("");
       const parsed = await parseSuggestionAttachment(suggestion.id);
-      setSelectedSuggestion({
+      const parsedSuggestion: AssetSuggestion = {
         ...suggestion,
         product_name: parsed.product_name ?? suggestion.product_name,
         brand: parsed.brand ?? suggestion.brand,
         vendor: parsed.vendor ?? suggestion.vendor,
         price: parsed.price ?? suggestion.price,
         purchase_date: parsed.purchase_date ?? suggestion.purchase_date,
-      });
+      };
+      setSuggestions((prev) => prev.map((item, itemIndex) => (itemIndex === index ? parsedSuggestion : item)));
+      setIsPreviewOpen(true);
       if (parsed.status !== "parsed") {
         setParsingMessage(parsed.message || "Could not parse attachment. Enter values manually.");
       }
     } catch (requestError: unknown) {
-      setSelectedSuggestion(suggestion);
+      setIsPreviewOpen(true);
       setParsingMessage("Could not parse attachment. Enter values manually.");
       setError(requestError instanceof Error ? requestError.message : "Failed to parse attachment");
     } finally {
@@ -89,6 +111,7 @@ const AssetSuggestions = () => {
     lifecycle_info?: AssetLifecyclePayload;
     supporting_documents?: File[];
   }) => {
+    const selectedSuggestion = suggestions[selectedSuggestionIndex];
     if (!selectedSuggestion) {
       return;
     }
@@ -122,8 +145,20 @@ const AssetSuggestions = () => {
       } else {
         setMessage("Asset saved successfully");
       }
-      setSuggestions((prev) => prev.filter((item) => item.id !== selectedSuggestion.id));
-      setSelectedSuggestion(null);
+
+      const currentIndex = suggestions.findIndex((item) => item.id === selectedSuggestion.id);
+      const remainingSuggestions = suggestions.filter((item) => item.id !== selectedSuggestion.id);
+      setSuggestions(remainingSuggestions);
+
+      if (remainingSuggestions.length === 0) {
+        setIsPreviewOpen(false);
+        setSelectedSuggestionIndex(0);
+      } else {
+        const nextIndex = Math.min(Math.max(currentIndex, 0), remainingSuggestions.length - 1);
+        setSelectedSuggestionIndex(nextIndex);
+      }
+
+      setParsingMessage("");
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Failed to save asset");
     } finally {
@@ -131,21 +166,19 @@ const AssetSuggestions = () => {
     }
   };
 
-  const handleDiscard = async (suggestionId: string) => {
-    try {
-      setError("");
-      await rejectSuggestion(suggestionId);
-      setMessage("Suggestion discarded.");
-      await loadSuggestions();
-    } catch (requestError: unknown) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to discard suggestion");
-    }
-  };
-
   return (
     <Box className="grid">
-      <Box className="col-12">
-        <Typography variant="h4" sx={{ mb: 2 }}>Asset Suggestions</Typography>
+      <Box className="col-12" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+        <Typography variant="h4">Asset Suggestions</Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={refreshing ? <CircularProgress size={16} /> : <RefreshIcon />}
+          onClick={() => { void handleRefresh(); }}
+          disabled={refreshing || loading}
+        >
+          Refresh
+        </Button>
       </Box>
       {loading ? (
         <Box className="col-12" sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -159,9 +192,12 @@ const AssetSuggestions = () => {
           {message ? <Alert severity="success">{message}</Alert> : null}
 
           <div className="grid">
-            {suggestions.map((suggestion) => (
+            {suggestions.map((suggestion, index) => (
               <div key={suggestion.id} className="col-12 md:col-6 lg:col-4">
                 <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
+                  {(() => {
+                    const statusLabel = suggestion.already_added ? "Already Added" : "New";
+                    return (
                   <Stack spacing={0.75}>
                     <Typography variant="body2"><strong>Product Name:</strong> {suggestion.product_name}</Typography>
                     <Typography variant="body2"><strong>Vendor:</strong> {suggestion.vendor || "-"}</Typography>
@@ -170,14 +206,18 @@ const AssetSuggestions = () => {
                     <Typography variant="body2"><strong>Attachment:</strong> {suggestion.attachment_filename || "-"}</Typography>
                     <Typography variant="body2"><strong>Quantity:</strong> {suggestion.quantity}</Typography>
                     <Typography variant="body2"><strong>Source:</strong> {suggestion.source}</Typography>
-                    <Stack direction="row" spacing={1}>
-                      <Button size="small" variant="contained" onClick={() => handleConfirm(suggestion)}>Confirm</Button>
-                      <Button size="small" variant="outlined" onClick={() => handleConfirm(suggestion)}>
-                        {parsingSuggestionId === suggestion.id ? "Parsing..." : "Save Asset"}
-                      </Button>
-                      <Button size="small" color="error" variant="text" onClick={() => handleDiscard(suggestion.id)}>Discard</Button>
-                    </Stack>
+                    <Typography variant="body2"><strong>Status:</strong> {statusLabel}</Typography>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => handleConfirm(suggestion, index)}
+                      disabled={suggestion.already_added || parsingSuggestionId === suggestion.id}
+                    >
+                      {parsingSuggestionId === suggestion.id ? "Adding..." : "Add"}
+                    </Button>
                   </Stack>
+                    );
+                  })()}
                 </Paper>
               </div>
             ))}
@@ -187,15 +227,17 @@ const AssetSuggestions = () => {
       </Box>
 
       <AssetPreviewModal
-        open={Boolean(selectedSuggestion)}
-        suggestion={selectedSuggestion}
+        open={isPreviewOpen}
         parsingMessage={parsingMessage}
         saveLoading={saveLoading}
+        suggestions={suggestions}
+        currentIndex={selectedSuggestionIndex}
+        setCurrentIndex={setSelectedSuggestionIndex}
         onClose={() => {
           if (saveLoading) {
             return;
           }
-          setSelectedSuggestion(null);
+          setIsPreviewOpen(false);
           setParsingMessage("");
         }}
         onSave={handleSaveAsset}

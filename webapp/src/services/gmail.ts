@@ -193,6 +193,13 @@ export type UploadedAssetDocument = {
 export type AssetCategoryOption = {
   category: string;
   subcategories: string[];
+  sub_categories?: string[];
+};
+
+type AssetCategoryApiOption = {
+  category?: string;
+  subcategories?: string[];
+  sub_categories?: string[];
 };
 
 export type AssetUpdatePayload = {
@@ -343,8 +350,27 @@ export const createAsset = async (payload: {
 };
 
 export const getAssetCategories = async (): Promise<AssetCategoryOption[]> => {
-  const response = await api.get<AssetCategoryOption[]>("/api/categories");
-  return response.data;
+  const response = await api.get<AssetCategoryApiOption[]>("/api/categories");
+  return response.data
+    .map((item) => {
+      const category = String(item.category || "").trim();
+      const source = Array.isArray(item.sub_categories)
+        ? item.sub_categories
+        : Array.isArray(item.subcategories)
+          ? item.subcategories
+          : [];
+
+      const normalized = Array.from(
+        new Set(source.map((value) => String(value || "").trim()).filter(Boolean))
+      );
+
+      return {
+        category,
+        subcategories: normalized,
+        sub_categories: normalized,
+      };
+    })
+    .filter((item) => Boolean(item.category));
 };
 
 export const uploadAssetDocuments = async (assetId: string, files: File[]): Promise<{
