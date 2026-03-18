@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar,
   Box,
+  Fab,
   Button,
   Collapse,
   Drawer,
@@ -38,6 +39,7 @@ import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import QrCodeScannerOutlinedIcon from "@mui/icons-material/QrCodeScannerOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import AddIcon from "@mui/icons-material/Add";
 
 import theme, { COLORS, HEADER_HEIGHT, SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_WIDTH, SPACING, getTheme } from "../styles/theme";
 import { LOGO } from "../constants/logo.ts";
@@ -119,7 +121,29 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
   const [assetsMenuOpen, setAssetsMenuOpen] = useState(true);
   const [addAssetsMenuOpen, setAddAssetsMenuOpen] = useState(true);
   const [expandedDrawerWidth, setExpandedDrawerWidth] = useState(SIDEBAR_WIDTH);
+  const [isScrolling, setIsScrolling] = useState(false);
   const drawerPaperRef = useRef<HTMLDivElement | null>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolling(true);
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+      }
+      scrollTimerRef.current = setTimeout(() => {
+        setIsScrolling(false);
+      }, 200);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setActivePath(location.pathname);
@@ -251,8 +275,8 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
             src={LOGO}
             alt="AssetLife Logo"
             sx={{
-              width: 32,
-              height: 32,
+              width: 48,
+              height: 48,
               display: "block",
               mr: collapsed ? 0 : 1,
             }}
@@ -615,6 +639,31 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
         >
           <Outlet />
         </Box>
+
+        <Fab
+          color="primary"
+          aria-label="Add asset"
+          onClick={() => {
+            navigate("/assets/add");
+          }}
+          sx={{
+            position: "fixed",
+            right: { xs: 16, sm: 20, md: 24 },
+            bottom: { xs: 16, sm: 20, md: 24 },
+            zIndex: muiTheme.zIndex.modal - 1,
+            opacity: isScrolling ? 0.1 : 0.7,
+            transform: "scale(1)",
+            boxShadow: muiTheme.shadows[8],
+            transition: "opacity 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease",
+            "&:hover": {
+              opacity: 1,
+              transform: "scale(1.06)",
+              boxShadow: muiTheme.shadows[12],
+            },
+          }}
+        >
+          <AddIcon />
+        </Fab>
       </Box>
     </Box>
   );

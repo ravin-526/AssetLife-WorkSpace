@@ -79,7 +79,7 @@ const Profile = () => {
   const [errors, setErrors] = useState<Partial<Record<keyof ProfileData, string>>>({});
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
 
   const storedToken = tokenFromStore ?? localStorage.getItem("jwt_token");
   const jwtPayload = useMemo(() => (storedToken ? parseJwtPayload(storedToken) : null), [storedToken]);

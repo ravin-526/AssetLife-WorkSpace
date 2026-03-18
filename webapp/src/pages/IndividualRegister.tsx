@@ -56,7 +56,7 @@ const IndividualRegister = () => {
   const [error, setError] = useState<string>("");
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
 
   const [registering, setRegistering] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
@@ -265,8 +265,8 @@ const IndividualRegister = () => {
                 src={LOGO}
                 alt="AssetLife Logo"
                 sx={{
-                  width: 56,
-                  height: 56,
+                  width: 84,
+                  height: 84,
                   display: "block",
                   mx: "auto",
                   mb: 1,

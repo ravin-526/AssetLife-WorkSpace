@@ -36,7 +36,9 @@ class AssetSuggestionService:
         if status:
             query["status"] = status
         cursor = self.collection.find(query).sort("created_at", -1)
-        return await cursor.to_list(length=1000)
+        results = await cursor.to_list(length=1000)
+        app_logger.info("SUGGESTIONS COUNT: %d (user_id=%s)", len(results), user_id)
+        return results
 
     async def get_suggestion(self, user_id: str, suggestion_id: str) -> dict[str, Any] | None:
         object_id = self._as_object_id(suggestion_id)

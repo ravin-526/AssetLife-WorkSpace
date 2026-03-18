@@ -16,8 +16,11 @@ import {
   MenuItem,
   Paper,
   Stack,
+  Tab,
+  Tabs,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import Grid from "@mui/material/GridLegacy";
@@ -25,13 +28,18 @@ import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 
+import useAutoDismissMessage from "../../hooks/useAutoDismissMessage.ts";
 import {
   AssetCategoryOption,
   AssetLifecyclePayload,
+  SuggestionEmailDetails,
   AssetSuggestion,
   UploadedAssetDocument,
+  getSuggestionEmailDetails,
   getAssetCategories,
   fetchSuggestionAttachmentBlob,
 } from "../../services/gmail.ts";
@@ -42,6 +50,7 @@ type AssetPreviewModalProps = {
   inlineMode?: boolean;
   showTitle?: boolean;
   collapseDocumentViewer?: boolean;
+  disableAttachmentAndEmailPreview?: boolean;
   parsingMessage?: string;
   saveLoading?: boolean;
   uploadedDocuments?: UploadedAssetDocument[];
@@ -85,6 +94,7 @@ const AssetPreviewModal = ({
   inlineMode = false,
   showTitle = true,
   collapseDocumentViewer = false,
+  disableAttachmentAndEmailPreview = false,
   parsingMessage,
   saveLoading = false,
   uploadedDocuments = [],
@@ -94,15 +104,20 @@ const AssetPreviewModal = ({
   onDeleteUploadedDocument,
   suggestions = [],
   currentIndex = 0,
-  setCurrentIndex,
-  navigation,
   onClose,
   onSave,
 }: AssetPreviewModalProps) => {
   const [attachmentLoading, setAttachmentLoading] = useState(false);
+  const [attachmentDownloadLoading, setAttachmentDownloadLoading] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
   const [attachmentMimeType, setAttachmentMimeType] = useState<string>("");
+  const [attachmentRenderError, setAttachmentRenderError] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<"attachment" | "email">("attachment");
+  const [emailDetails, setEmailDetails] = useState<SuggestionEmailDetails | null>(null);
+  const [emailDetailsLoading, setEmailDetailsLoading] = useState(false);
+  const [emailDetailsError, setEmailDetailsError] = useState("");
+  const [displayedParsingMessage, setDisplayedParsingMessage] = useState("");
   const [locallyDeletedDocumentIds, setLocallyDeletedDocumentIds] = useState<string[]>([]);
   const [form, setForm] = useState({
     product_name: "",
@@ -163,26 +178,14 @@ const AssetPreviewModal = ({
   const [categories, setCategories] = useState<AssetCategoryOption[]>([]);
   const [initialSnapshot, setInitialSnapshot] = useState("");
 
-  const total = suggestions.length > 0 ? suggestions.length : (suggestionProp ? 1 : 0);
-  const normalizedIndex = total > 0 ? Math.min(Math.max(currentIndex, 0), total - 1) : 0;
+  useAutoDismissMessage(attachmentError, setAttachmentError, { delay: 5000 });
+  useAutoDismissMessage(basicDetailsError, setBasicDetailsError, { delay: 5000 });
+  useAutoDismissMessage(emailDetailsError, setEmailDetailsError, { delay: 5000 });
+  useAutoDismissMessage(displayedParsingMessage, setDisplayedParsingMessage, { delay: 3000 });
 
   const suggestion = useMemo(() => {
-    return suggestions?.[normalizedIndex] ?? suggestionProp ?? null;
-  }, [normalizedIndex, suggestionProp, suggestions]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    console.log("MODAL DEBUG:", {
-      total,
-      currentIndex,
-      disablePrevious: normalizedIndex === 0,
-      disableNext: normalizedIndex === total - 1,
-      suggestionName: suggestion?.product_name,
-    });
-  }, [currentIndex, normalizedIndex, open, suggestion, total]);
+    return suggestions?.[currentIndex] ?? suggestionProp ?? null;
+  }, [currentIndex, suggestionProp, suggestions]);
 
   const getRecordValue = (record: Record<string, unknown>, keys: string[]): string | undefined => {
     for (const key of keys) {
@@ -252,12 +255,129 @@ const AssetPreviewModal = ({
     return value === "application/pdf" || value.endsWith(".pdf");
   };
 
+  const isPreviewableAttachment = (fileName?: string, mimeType?: string): boolean => {
+    const extension = (fileName || "").split(".").pop()?.toLowerCase();
+    if (extension && ["pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(extension)) {
+      return true;
+    }
+    return isPdfFile(mimeType) || isImageFile(mimeType);
+  };
+
+  const isValidPreviewBlob = (blob: Blob): boolean => {
+    return blob.size > 0 && (blob.type === "application/pdf" || blob.type.startsWith("image/"));
+  };
+
   const standardControlHeight = 36;
   const standardFieldSx = {
     "& .MuiInputBase-root": {
       height: standardControlHeight,
     },
   };
+
+  const sanitizeEmailHtml = (rawHtml: string): string => {
+    if (typeof window === "undefined") {
+      return rawHtml;
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, "text/html");
+    doc.querySelectorAll("script, style, iframe, object, embed, form, link, meta").forEach((node) => node.remove());
+
+    doc.querySelectorAll("*").forEach((element) => {
+      for (const attribute of Array.from(element.attributes)) {
+        const attrName = attribute.name.toLowerCase();
+        const attrValue = attribute.value;
+        if (attrName.startsWith("on")) {
+          element.removeAttribute(attribute.name);
+          continue;
+        }
+        if ((attrName === "href" || attrName === "src") && /^javascript:/i.test(attrValue.trim())) {
+          element.removeAttribute(attribute.name);
+        }
+      }
+    });
+
+    return doc.body.innerHTML;
+  };
+
+  const formatAttachmentSize = (size?: number) => {
+    if (!size || size <= 0) {
+      return "";
+    }
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+    }
+    if (size >= 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    return `${size} B`;
+  };
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setRightPanelTab("attachment");
+    setEmailDetails(null);
+    setEmailDetailsError("");
+    setEmailDetailsLoading(false);
+  }, [open, suggestion?.id]);
+
+  useEffect(() => {
+    setDisplayedParsingMessage(parsingMessage ?? "");
+  }, [open, parsingMessage, suggestion?.id]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEmailDetails = async () => {
+      if (disableAttachmentAndEmailPreview || !open || rightPanelTab !== "email" || !suggestion?.id) {
+        return;
+      }
+
+      const localDetails: SuggestionEmailDetails = {
+        subject: suggestion.subject,
+        sender: suggestion.sender,
+        received_date: suggestion.received_date || suggestion.email_date,
+        email_body: suggestion.email_body,
+        email_body_html: suggestion.email_body_html,
+        attachments: [],
+      };
+
+      if (localDetails.email_body || localDetails.email_body_html) {
+        setEmailDetails(localDetails);
+        setEmailDetailsError("");
+        setEmailDetailsLoading(false);
+        return;
+      }
+
+      try {
+        setEmailDetailsLoading(true);
+        setEmailDetailsError("");
+        const response = await getSuggestionEmailDetails(suggestion.id);
+        if (!active) {
+          return;
+        }
+        setEmailDetails(response);
+      } catch (requestError: unknown) {
+        if (!active) {
+          return;
+        }
+        setEmailDetails(localDetails);
+        setEmailDetailsError(requestError instanceof Error ? requestError.message : "Failed to load email details");
+      } finally {
+        if (active) {
+          setEmailDetailsLoading(false);
+        }
+      }
+    };
+
+    void loadEmailDetails();
+
+    return () => {
+      active = false;
+    };
+  }, [disableAttachmentAndEmailPreview, open, rightPanelTab, suggestion]);
 
   useEffect(() => {
     setAttachmentError("");
@@ -392,20 +512,47 @@ const AssetPreviewModal = ({
     let isMounted = true;
 
     const loadAttachmentPreview = async () => {
-      if (!open || !suggestion?.id || !suggestion?.attachment_filename) {
+      const canPreview = isPreviewableAttachment(suggestion?.attachment_filename, suggestion?.attachment_mime_type);
+      if (disableAttachmentAndEmailPreview || !open || rightPanelTab !== "attachment" || !suggestion?.id) {
         if (attachmentUrl) {
           URL.revokeObjectURL(attachmentUrl);
         }
         setAttachmentUrl(null);
         setAttachmentMimeType("");
+        setAttachmentRenderError(false);
+        return;
+      }
+
+      if (!canPreview) {
+        if (attachmentUrl) {
+          URL.revokeObjectURL(attachmentUrl);
+        }
+        setAttachmentUrl(null);
+        setAttachmentMimeType("");
+        setAttachmentLoading(false);
+        setAttachmentRenderError(false);
         return;
       }
 
       try {
         setAttachmentLoading(true);
         setAttachmentError("");
+        setAttachmentRenderError(false);
         const blob = await fetchSuggestionAttachmentBlob(suggestion.id);
         if (!isMounted) {
+          return;
+        }
+
+        const resolvedMimeType = blob.type || suggestion.attachment_mime_type || "";
+        const hasValidBlob = isValidPreviewBlob(blob);
+        if (!hasValidBlob) {
+          if (attachmentUrl) {
+            URL.revokeObjectURL(attachmentUrl);
+          }
+          setAttachmentUrl(null);
+          setAttachmentMimeType(resolvedMimeType);
+          setAttachmentError("Invalid or unsupported file.");
+          setAttachmentRenderError(false);
           return;
         }
 
@@ -415,7 +562,7 @@ const AssetPreviewModal = ({
 
         const objectUrl = URL.createObjectURL(blob);
         setAttachmentUrl(objectUrl);
-        setAttachmentMimeType(blob.type || suggestion.attachment_mime_type || "");
+        setAttachmentMimeType(resolvedMimeType);
       } catch (requestError: unknown) {
         if (!isMounted) {
           return;
@@ -435,7 +582,7 @@ const AssetPreviewModal = ({
     return () => {
       isMounted = false;
     };
-  }, [open, suggestion]);
+  }, [attachmentUrl, disableAttachmentAndEmailPreview, open, rightPanelTab, suggestion]);
 
   useEffect(() => {
     return () => {
@@ -516,23 +663,102 @@ const AssetPreviewModal = ({
       };
     }
 
-    if (fallbackDocument?.url) {
-      return {
-        name: fallbackDocument.displayName,
-        url: fallbackDocument.url,
-        isImage: fallbackDocument.isImage,
-        isPdf: isPdfFile(fallbackDocument.mimeType) || isPdfFile(fallbackDocument.displayName) || isPdfFile(fallbackDocument.url),
-      };
-    }
-
     return null;
-  }, [attachmentMimeType, attachmentUrl, fallbackDocument, suggestion?.attachment_filename]);
+  }, [attachmentMimeType, attachmentUrl, suggestion?.attachment_filename]);
 
-  const handlePreviewAttachment = () => {
-    if (!previewFile?.url) {
+  const hasAttachmentSource = useMemo(() => {
+    return Boolean(suggestion?.id && (suggestion?.attachment_filename || suggestion?.attachment_mime_type));
+  }, [suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.id]);
+
+  const sanitizedEmailHtml = useMemo(() => {
+    if (!emailDetails?.email_body_html) {
+      return "";
+    }
+    return sanitizeEmailHtml(emailDetails.email_body_html);
+  }, [emailDetails?.email_body_html]);
+
+  const emailAttachmentList = useMemo(() => {
+    if (emailDetails?.attachments?.length) {
+      return emailDetails.attachments;
+    }
+    if (suggestion?.attachment_filename) {
+      return [{ file_name: suggestion.attachment_filename, mime_type: suggestion.attachment_mime_type }];
+    }
+    return [];
+  }, [emailDetails?.attachments, suggestion?.attachment_filename, suggestion?.attachment_mime_type]);
+
+  const renderAttachmentFallback = (message?: string) => (
+    <Box
+      sx={{
+        flex: 1,
+        minHeight: 0,
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        px: 2,
+      }}
+    >
+      <Stack spacing={1.5} alignItems="center" sx={{ textAlign: "center", maxWidth: 360 }}>
+        <DescriptionOutlinedIcon color="action" fontSize="large" />
+        <Typography variant="body1" fontWeight={600}>
+          Preview is not available for this file.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {message || "You can download the file to view it."}
+        </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<DownloadOutlinedIcon fontSize="small" />}
+          onClick={() => {
+            void handleDownloadAttachment();
+          }}
+          disabled={attachmentDownloadLoading}
+        >
+          {attachmentDownloadLoading ? "Downloading..." : "Download"}
+        </Button>
+      </Stack>
+    </Box>
+  );
+
+  const handleDownloadAttachment = async () => {
+    if (!suggestion?.id && !previewFile?.url) {
       return;
     }
-    window.open(previewFile.url, "_blank", "noopener,noreferrer");
+
+    try {
+      setAttachmentError("");
+      setAttachmentDownloadLoading(true);
+
+      if (suggestion?.id) {
+        const blob = await fetchSuggestionAttachmentBlob(suggestion.id, true);
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = suggestion.attachment_filename || previewFile.name || "attachment";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
+      if (previewFile?.url) {
+        const link = document.createElement("a");
+        link.href = previewFile.url;
+        link.download = previewFile.name || "attachment";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+    } catch (requestError: unknown) {
+      setAttachmentError(requestError instanceof Error ? requestError.message : "Failed to download attachment");
+    } finally {
+      setAttachmentDownloadLoading(false);
+    }
   };
 
   const handleDeleteDocument = async (document: UploadedAssetDocument) => {
@@ -581,25 +807,6 @@ const AssetPreviewModal = ({
     });
 
     return Boolean(initialSnapshot) && currentSnapshot !== initialSnapshot;
-  };
-
-  const handleNavigate = (direction: "previous" | "next") => {
-    const proceed = !hasUnsavedChanges() || window.confirm("You have unsaved changes. Continue?");
-    if (!proceed) {
-      return;
-    }
-
-    if (navigation) {
-      if (direction === "previous") {
-        navigation.onPrevious();
-        return;
-      }
-
-      navigation.onNext();
-      return;
-    }
-
-    handleFallbackNavigation(direction);
   };
 
   const handleSave = async () => {
@@ -774,21 +981,7 @@ const AssetPreviewModal = ({
     return options;
   }, [categories, form.category]);
 
-  const disablePrevious = normalizedIndex === 0;
-  const disableNext = normalizedIndex === total - 1;
 
-  const handleFallbackNavigation = (direction: "previous" | "next") => {
-    if (!setCurrentIndex) {
-      return;
-    }
-
-    setCurrentIndex((prev) => {
-      if (direction === "previous") {
-        return Math.max(prev - 1, 0);
-      }
-      return Math.min(prev + 1, Math.max(total - 1, 0));
-    });
-  };
 
   return (
     <Dialog
@@ -823,9 +1016,7 @@ const AssetPreviewModal = ({
       }}
     >
       {showTitle ? (
-        <DialogTitle>
-          {total > 0 ? `Asset Preview - Suggestion ${normalizedIndex + 1} of ${total}` : "Asset Preview"}
-        </DialogTitle>
+        <DialogTitle>Asset Preview</DialogTitle>
       ) : null}
       <DialogContent sx={{ overflow: inlineMode ? "visible" : "hidden", height: inlineMode ? "auto" : { xs: "70vh", md: "72vh" } }}>
         <Box sx={{ mt: 1, minHeight: 0, height: "100%" }}>
@@ -852,7 +1043,7 @@ const AssetPreviewModal = ({
                     </Alert>
                   ) : null}
                   {attachmentError ? <Alert severity="error">{attachmentError}</Alert> : null}
-                  {parsingMessage ? <Alert severity="warning">{parsingMessage}</Alert> : null}
+                  {displayedParsingMessage ? <Alert severity="warning">{displayedParsingMessage}</Alert> : null}
                   {basicDetailsError ? <Alert severity="error">{basicDetailsError}</Alert> : null}
 
                   <Accordion disableGutters defaultExpanded>
@@ -1378,46 +1569,7 @@ const AssetPreviewModal = ({
 
             {!collapseDocumentViewer ? (
             <Paper variant="outlined" sx={{ minHeight: 0, display: "flex", flexDirection: "column", p: 2 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                <Typography variant="subtitle1">Invoice Preview</Typography>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    handlePreviewAttachment();
-                  }}
-                  disabled={!previewFile?.url || attachmentLoading}
-                >
-                  {attachmentLoading ? "Opening..." : "Open in New Tab"}
-                </Button>
-              </Box>
-              {attachmentLoading ? (
-                <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <CircularProgress size={20} />
-                    <Typography variant="body2" color="text.secondary">Loading invoice preview...</Typography>
-                  </Stack>
-                </Box>
-              ) : previewFile?.isImage && previewFile.url ? (
-                <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
-                  <Box
-                    component="img"
-                    src={previewFile.url}
-                    alt={previewFile.name}
-                    sx={{ width: "100%", height: "100%", objectFit: "contain", display: "block", bgcolor: "background.default" }}
-                  />
-                </Box>
-              ) : previewFile?.isPdf && previewFile.url ? (
-                <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
-                  <iframe
-                    src={`${previewFile.url}#zoom=80&navpanes=0&view=FitH`}
-                    title="Invoice PDF Preview"
-                    width="100%"
-                    height="100%"
-                    style={{ border: "none" }}
-                  />
-                </Box>
-              ) : previewFile?.url ? (
+              {disableAttachmentAndEmailPreview ? (
                 <Box
                   sx={{
                     flex: 1,
@@ -1431,36 +1583,174 @@ const AssetPreviewModal = ({
                     px: 2,
                   }}
                 >
-                  <Stack spacing={1.25} alignItems="center">
-                    <Alert severity="info">Preview not available for this file type. Click download to view the attachment.</Alert>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<OpenInNewIcon fontSize="small" />}
-                      onClick={() => {
-                        handlePreviewAttachment();
-                      }}
-                    >
-                      Download Attachment
-                    </Button>
-                  </Stack>
+                  <Alert severity="info">No attachment or email available for Excel uploaded assets</Alert>
                 </Box>
               ) : (
-                <Box
-                  sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    px: 2,
-                  }}
-                >
-                  <Alert severity="info">No file uploaded.</Alert>
-                </Box>
+                <>
+                  <Tabs
+                    value={rightPanelTab}
+                    onChange={(_, nextValue: "attachment" | "email") => setRightPanelTab(nextValue)}
+                    sx={{ mb: 1 }}
+                  >
+                    <Tab value="attachment" label="Attachment" />
+                    <Tab value="email" label="Email" />
+                  </Tabs>
+
+                  {rightPanelTab === "attachment" ? (
+                    <>
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                        <Typography variant="subtitle1">Invoice Preview</Typography>
+                      </Box>
+                      {attachmentLoading ? (
+                        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <CircularProgress size={20} />
+                            <Typography variant="body2" color="text.secondary">Loading invoice preview...</Typography>
+                          </Stack>
+                        </Box>
+                      ) : attachmentError || attachmentRenderError ? (
+                        renderAttachmentFallback(attachmentError || "The file could not be rendered in the preview panel.")
+                      ) : previewFile?.isImage && previewFile.url ? (
+                        <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
+                          <Box
+                            component="img"
+                            src={previewFile.url}
+                            alt={previewFile.name}
+                            onError={() => {
+                              setAttachmentRenderError(true);
+                            }}
+                            sx={{ width: "100%", height: "100%", objectFit: "contain", display: "block", bgcolor: "background.default" }}
+                          />
+                        </Box>
+                      ) : previewFile?.isPdf && previewFile.url ? (
+                        <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
+                          <object
+                            data={`${previewFile.url}#zoom=80&navpanes=0&view=FitH`}
+                            type="application/pdf"
+                            width="100%"
+                            height="100%"
+                            aria-label="Invoice PDF Preview"
+                          >
+                            {renderAttachmentFallback("The PDF preview could not be loaded in this browser.")}
+                          </object>
+                        </Box>
+                      ) : hasAttachmentSource ? (
+                        renderAttachmentFallback("Preview is not available for this file format.")
+                      ) : (
+                        <Box
+                          sx={{
+                            flex: 1,
+                            minHeight: 0,
+                            border: 1,
+                            borderColor: "divider",
+                            borderRadius: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            px: 2,
+                          }}
+                        >
+                          <Alert severity="info">No file uploaded.</Alert>
+                        </Box>
+                      )}
+                    </>
+                  ) : (
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        px: 2,
+                      }}
+                    >
+                      {emailDetailsLoading ? (
+                        <Box sx={{ minHeight: 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <CircularProgress size={20} />
+                            <Typography variant="body2" color="text.secondary">Loading email details...</Typography>
+                          </Stack>
+                        </Box>
+                      ) : (
+                        <Stack spacing={1.5}>
+                          {emailDetailsError ? <Alert severity="warning">{emailDetailsError}</Alert> : null}
+
+                          <Box>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Subject</Typography>
+                            <Tooltip title={emailDetails?.subject || suggestion?.subject || "-"} arrow>
+                              <Typography variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {emailDetails?.subject || suggestion?.subject || "-"}
+                              </Typography>
+                            </Tooltip>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>From</Typography>
+                            <Tooltip title={emailDetails?.sender || suggestion?.sender || "-"} arrow>
+                              <Typography variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {emailDetails?.sender || suggestion?.sender || "-"}
+                              </Typography>
+                            </Tooltip>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Date</Typography>
+                            <Typography variant="body2">
+                              {emailDetails?.received_date || suggestion?.received_date || suggestion?.email_date
+                                ? new Date(emailDetails?.received_date || suggestion?.received_date || suggestion?.email_date || "").toLocaleString()
+                                : "-"}
+                            </Typography>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Email Body</Typography>
+                            <Box
+                              sx={{
+                                mt: 0.75,
+                                p: 1.25,
+                                border: 1,
+                                borderColor: "divider",
+                                borderRadius: 1,
+                                maxHeight: 260,
+                                overflowY: "auto",
+                                bgcolor: "background.default",
+                              }}
+                            >
+                              {sanitizedEmailHtml ? (
+                                <Box sx={{ "& img": { maxWidth: "100%" }, fontSize: "0.875rem" }} dangerouslySetInnerHTML={{ __html: sanitizedEmailHtml }} />
+                              ) : (
+                                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                                  {emailDetails?.email_body || suggestion?.email_body || "No email body available."}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Attachments</Typography>
+                            <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+                              {emailAttachmentList.length ? (
+                                emailAttachmentList.map((attachment) => (
+                                  <Typography key={`${attachment.file_name}-${attachment.mime_type || "unknown"}`} variant="body2">
+                                    {attachment.file_name}
+                                    {attachment.mime_type ? ` (${attachment.mime_type})` : ""}
+                                    {attachment.size ? ` - ${formatAttachmentSize(attachment.size)}` : ""}
+                                  </Typography>
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">No attachments</Typography>
+                              )}
+                            </Stack>
+                          </Box>
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
+                </>
               )}
             </Paper>
             ) : null}
@@ -1468,25 +1758,6 @@ const AssetPreviewModal = ({
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button
-          onClick={() => {
-            handleNavigate("previous");
-          }}
-          disabled={saveLoading || disablePrevious}
-        >
-          Previous
-        </Button>
-        <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-          {Math.min(normalizedIndex + 1, Math.max(total, 1))} of {Math.max(total, 1)}
-        </Typography>
-        <Button
-          onClick={() => {
-            handleNavigate("next");
-          }}
-          disabled={saveLoading || disableNext}
-        >
-          Next
-        </Button>
         <Button onClick={onClose} disabled={saveLoading}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saveLoading}>
           {saveLoading ? "Saving..." : "Save Asset"}

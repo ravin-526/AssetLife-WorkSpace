@@ -49,7 +49,7 @@ const IndividualLogin = () => {
   const [error, setError] = useState<string>("");
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpCooldown, setOtpCooldown] = useState(0);
@@ -214,8 +214,8 @@ const IndividualLogin = () => {
               src={LOGO}
               alt="AssetLife Logo"
               sx={{
-                width: 56,
-                height: 56,
+                width: 84,
+                height: 84,
                 display: "block",
                 mx: "auto",
                 mb: 1,

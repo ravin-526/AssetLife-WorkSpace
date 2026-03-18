@@ -19,7 +19,7 @@ const EmailIntegrations = () => {
   const [error, setError] = useState<string>("");
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [scanDays, setScanDays] = useState(10);

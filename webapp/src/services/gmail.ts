@@ -60,6 +60,9 @@ export type AssetSuggestion = {
   purchase_date?: string;
   sender?: string;
   subject?: string;
+  received_date?: string;
+  email_body?: string;
+  email_body_html?: string;
   email_date?: string;
   quantity: number;
   source: string;
@@ -86,11 +89,18 @@ export type AssetSuggestion = {
   warranty_details?: Record<string, unknown> | null;
   insurance_details?: Record<string, unknown> | null;
   service_details?: Record<string, unknown> | null;
+  row_number?: number;
+  validation_status?: "valid" | "invalid";
+  validation_errors?: string[];
   created_at: string;
 };
 
 export type ExcelUploadResponse = {
   file_name?: string;
+  total?: number;
+  valid?: number;
+  invalid?: number;
+  data?: Array<{ row: number; status: "valid" | "invalid"; errors: string[] }>;
   total_rows: number;
   parsed_rows: number;
   skipped_rows: Array<{ row_number: number; reason: string }>;
@@ -113,6 +123,21 @@ export type SuggestionParseResponse = {
   price?: number;
   purchase_date?: string;
   warranty?: string;
+};
+
+export type SuggestionEmailAttachment = {
+  file_name: string;
+  mime_type?: string;
+  size?: number;
+};
+
+export type SuggestionEmailDetails = {
+  subject?: string;
+  sender?: string;
+  received_date?: string;
+  email_body?: string;
+  email_body_html?: string;
+  attachments: SuggestionEmailAttachment[];
 };
 
 export type Asset = {
@@ -326,6 +351,11 @@ export const parseSuggestionAttachment = async (suggestionId: string): Promise<S
   return response.data;
 };
 
+export const getSuggestionEmailDetails = async (suggestionId: string): Promise<SuggestionEmailDetails> => {
+  const response = await api.get<SuggestionEmailDetails>(`/api/assets/suggestions/${suggestionId}/email`);
+  return response.data;
+};
+
 export const createAsset = async (payload: {
   name: string;
   brand?: string;
@@ -451,10 +481,11 @@ export const fetchAssetInvoiceBlob = async (assetId: string): Promise<Blob> => {
   return response.data as Blob;
 };
 
-export const fetchSuggestionAttachmentBlob = async (suggestionId: string): Promise<Blob> => {
+export const fetchSuggestionAttachmentBlob = async (suggestionId: string, download = false): Promise<Blob> => {
   const headers = requireAuthHeader();
   const response = await api.get(`/api/assets/suggestions/${suggestionId}/attachment`, {
     headers,
+    params: download ? { download: true } : undefined,
     responseType: "blob",
   });
   return response.data as Blob;

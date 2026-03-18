@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -8,9 +8,14 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils.cell import get_column_letter, quote_sheetname
+from openpyxl.workbook.defined_name import DefinedName
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from app.core.security import get_current_user
 from app.db.mongo import get_db
+from app.routes.categories import FINAL_CATEGORY_SUBCATEGORIES
 
 router = APIRouter(prefix="/api/assets", tags=["Assets"])
 
@@ -19,427 +24,377 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 DOC_ROOT = UPLOAD_ROOT / "documents"
 DOC_ROOT.mkdir(parents=True, exist_ok=True)
 
-EXCEL_TEMPLATE_COLUMNS = [
-    "product_name",
-    "brand",
-    "vendor",
-    "price",
-    "purchase_date",
-    "category",
-    "subcategory",
-    "serial_number",
-    "model_number",
-    "invoice_number",
-    "description",
-    "notes",
-    "location",
-    "assigned_user",
-    "warranty_available",
-    "warranty_provider",
-    "warranty_type",
-    "warranty_start_date",
-    "warranty_end_date",
-    "warranty_notes",
-    "warranty_reminder_30_days",
-    "warranty_reminder_7_days",
-    "warranty_reminder_on_expiry",
-    "insurance_available",
-    "insurance_provider",
-    "insurance_policy_number",
-    "insurance_start_date",
-    "insurance_expiry_date",
-    "insurance_premium_amount",
-    "insurance_coverage_notes",
-    "insurance_reminder_45_days",
-    "insurance_reminder_15_days",
-    "service_required",
-    "service_frequency",
-    "service_custom_interval_days",
-    "service_reminder_enabled",
+EXCEL_TEMPLATE_FIELDS = [
+    {"key": "product_name", "label": "Asset Name *", "type": "text", "required": True},
+    {"key": "category", "label": "Category *", "type": "category", "required": True},
+    {"key": "custom_category", "label": "Enter Category (if Category = Other)", "type": "text", "required": False},
+    {"key": "subcategory", "label": "SubCategory *", "type": "subcategory", "required": True},
+    {"key": "custom_subcategory", "label": "Enter SubCategory (if SubCategory = Other)", "type": "text", "required": False},
+    {"key": "vendor", "label": "Vendor", "type": "text", "required": False},
+    {"key": "purchase_date", "label": "Purchase Date", "type": "date", "required": False},
+    {"key": "price", "label": "Purchase Price", "type": "number", "required": False},
+    {"key": "serial_number", "label": "Serial Number", "type": "text", "required": False},
+    {"key": "model_number", "label": "Model Number", "type": "text", "required": False},
+    {"key": "invoice_number", "label": "Invoice Number", "type": "text", "required": False},
+    {"key": "location", "label": "Location", "type": "text", "required": False},
+    {"key": "assigned_user", "label": "Assigned User", "type": "text", "required": False},
+    {"key": "description", "label": "Description", "type": "text", "required": False},
+    {"key": "notes", "label": "Notes", "type": "text", "required": False},
+    {"key": "warranty_available", "label": "Warranty Available", "type": "boolean", "required": False},
+    {"key": "warranty_provider", "label": "Warranty Provider", "type": "text", "required": False},
+    {"key": "warranty_type", "label": "Warranty Type", "type": "list", "required": False},
+    {"key": "warranty_start_date", "label": "Warranty Start Date", "type": "date", "required": False},
+    {"key": "warranty_end_date", "label": "Warranty End Date", "type": "date", "required": False},
+    {"key": "warranty_notes", "label": "Warranty Notes", "type": "text", "required": False},
+    {"key": "warranty_reminder_30_days", "label": "Warranty Reminder 30 Days", "type": "boolean", "required": False},
+    {"key": "warranty_reminder_7_days", "label": "Warranty Reminder 7 Days", "type": "boolean", "required": False},
+    {"key": "warranty_reminder_on_expiry", "label": "Warranty Reminder On Expiry", "type": "boolean", "required": False},
+    {"key": "insurance_available", "label": "Insurance Available", "type": "boolean", "required": False},
+    {"key": "insurance_provider", "label": "Insurance Provider", "type": "text", "required": False},
+    {"key": "insurance_policy_number", "label": "Policy Number", "type": "text", "required": False},
+    {"key": "insurance_start_date", "label": "Insurance Start Date", "type": "date", "required": False},
+    {"key": "insurance_expiry_date", "label": "Insurance Expiry Date", "type": "date", "required": False},
+    {"key": "insurance_premium_amount", "label": "Insurance Premium Amount", "type": "number", "required": False},
+    {"key": "insurance_coverage_notes", "label": "Insurance Notes", "type": "text", "required": False},
+    {"key": "insurance_reminder_45_days", "label": "Insurance Reminder 45 Days", "type": "boolean", "required": False},
+    {"key": "insurance_reminder_15_days", "label": "Insurance Reminder 15 Days", "type": "boolean", "required": False},
+    {"key": "service_required", "label": "Service Required", "type": "boolean", "required": False},
+    {"key": "service_frequency", "label": "Service Frequency", "type": "list", "required": False},
+    {"key": "service_custom_interval_days", "label": "Service Interval (Days)", "type": "number", "required": False},
+    {"key": "service_reminder_enabled", "label": "Enable Next Service Reminder", "type": "boolean", "required": False},
 ]
 
+EXCEL_TEMPLATE_COLUMNS = [field["key"] for field in EXCEL_TEMPLATE_FIELDS]
+EXCEL_TEMPLATE_HEADERS = [field["label"] for field in EXCEL_TEMPLATE_FIELDS]
+EXCEL_TEMPLATE_HEADER_BY_KEY = {field["key"]: field["label"] for field in EXCEL_TEMPLATE_FIELDS}
+EXCEL_TEMPLATE_FIELD_BY_KEY = {field["key"]: field for field in EXCEL_TEMPLATE_FIELDS}
+BOOLEAN_TEMPLATE_VALUES = ["Yes", "No"]
+WARRANTY_TYPE_VALUES = ["manufacturer", "extended"]
+SERVICE_FREQUENCY_VALUES = ["monthly", "quarterly", "half_yearly", "yearly", "custom"]
+EXCEL_TEMPLATE_ROW_LIMIT = 2000
+EXCEL_TEMPLATE_SHEET_NAME = "Assets"
+EXCEL_TEMPLATE_MASTER_SHEET_NAME = "MasterData"
+EXCEL_TEMPLATE_HEADER_FILL = PatternFill(fill_type="solid", fgColor="DCEBFF")
+EXCEL_TEMPLATE_HEADER_FONT = Font(bold=True, color="1F2937")
+
+
+def _sample_asset_row(**overrides: Any) -> dict[str, Any]:
+    row = {
+        "product_name": "",
+        "category": "Electronics",
+        "custom_category": "",
+        "subcategory": "Laptops",
+        "custom_subcategory": "",
+        "vendor": "Croma",
+        "purchase_date": "2024-01-01",
+        "price": 0,
+        "serial_number": "",
+        "model_number": "",
+        "invoice_number": "",
+        "location": "Bangalore HQ",
+        "assigned_user": "Operations Team",
+        "description": "",
+        "notes": "",
+        "warranty_available": "Yes",
+        "warranty_provider": "Manufacturer Warranty",
+        "warranty_type": "manufacturer",
+        "warranty_start_date": "2024-01-01",
+        "warranty_end_date": "2025-01-01",
+        "warranty_notes": "Standard coverage",
+        "warranty_reminder_30_days": "Yes",
+        "warranty_reminder_7_days": "Yes",
+        "warranty_reminder_on_expiry": "Yes",
+        "insurance_available": "No",
+        "insurance_provider": "",
+        "insurance_policy_number": "",
+        "insurance_start_date": "",
+        "insurance_expiry_date": "",
+        "insurance_premium_amount": "",
+        "insurance_coverage_notes": "",
+        "insurance_reminder_45_days": "No",
+        "insurance_reminder_15_days": "No",
+        "service_required": "Yes",
+        "service_frequency": "yearly",
+        "service_custom_interval_days": "",
+        "service_reminder_enabled": "Yes",
+    }
+    row.update(overrides)
+    return row
+
+
 EXCEL_TEMPLATE_SAMPLE_ROWS = [
-    [
-        "MacBook Pro 16",
-        "Apple",
-        "iStore",
-        249999,
-        "2024-01-12",
-        "Electronics",
-        "Laptop",
-        "MBP16-001",
-        "A2780",
-        "INV-APL-2024-001",
-        "Engineering laptop",
-        "Issued to design team",
-        "Bangalore HQ",
-        "Asha N",
-        "yes",
-        "Apple Care",
-        "manufacturer",
-        "2024-01-12",
-        "2027-01-11",
-        "3 year plan",
-        "yes",
-        "yes",
-        "yes",
-        "yes",
-        "HDFC Ergo",
-        "POL-APL-9910",
-        "2024-01-12",
-        "2025-01-11",
-        12999,
-        "Accidental damage cover",
-        "yes",
-        "yes",
-        "yes",
-        "yearly",
-        "",
-        "yes",
-    ],
-    [
-        "Dell XPS 13",
-        "Dell",
-        "Dell Store",
-        145000,
-        "2024-02-03",
-        "Electronics",
-        "Laptop",
-        "DX13-7781",
-        "XPS-9315",
-        "INV-DEL-2024-013",
-        "Sales leadership laptop",
-        "",
-        "Mumbai Office",
-        "Rohit M",
-        "yes",
-        "Dell Warranty",
-        "extended",
-        "2024-02-03",
-        "2026-02-02",
-        "Extended coverage",
-        "yes",
-        "yes",
-        "yes",
-        "no",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "no",
-        "no",
-        "yes",
-        "half_yearly",
-        "",
-        "yes",
-    ],
-    [
-        "iPhone 15",
-        "Apple",
-        "Unicorn",
-        89900,
-        "2024-03-15",
-        "Electronics",
-        "Mobile",
-        "IPH15-9981",
-        "A3090",
-        "INV-APL-2024-089",
-        "Executive phone",
-        "Dual SIM setup",
-        "Chennai Branch",
-        "Priya S",
-        "yes",
-        "Apple Care+",
-        "manufacturer",
-        "2024-03-15",
-        "2026-03-14",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "yes",
-        "Bajaj Allianz",
-        "POL-IPH-4401",
-        "2024-03-15",
-        "2025-03-14",
-        5500,
-        "Screen and theft cover",
-        "yes",
-        "yes",
-        "yes",
-        "yearly",
-        "",
-        "yes",
-    ],
-    [
-        "Canon EOS R8",
-        "Canon",
-        "PhotoWorld",
-        128500,
-        "2024-04-01",
-        "Electronics",
-        "Camera",
-        "CANR8-3002",
-        "EOS-R8",
-        "INV-CAN-2024-020",
-        "Content team camera",
-        "",
-        "Studio",
-        "Media Desk",
-        "yes",
-        "Canon India",
-        "manufacturer",
-        "2024-04-01",
-        "2026-03-31",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "no",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "no",
-        "no",
-        "yes",
-        "quarterly",
-        "",
-        "yes",
-    ],
-    [
-        "Samsung 55 TV",
-        "Samsung",
-        "Reliance Digital",
-        62999,
-        "2024-04-28",
-        "Electronics",
-        "Television",
-        "SAMTV55-773",
-        "UA55AU7700",
-        "INV-SAM-2024-114",
-        "Meeting room display",
-        "Wall mounted",
-        "Pune Office",
-        "Facilities",
-        "yes",
-        "Samsung Care",
-        "extended",
-        "2024-04-28",
-        "2027-04-27",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "yes",
-        "ICICI Lombard",
-        "POL-TV-7782",
-        "2024-04-28",
-        "2025-04-27",
-        3800,
-        "Power surge cover",
-        "yes",
-        "yes",
-        "yes",
-        "yearly",
-        "",
-        "yes",
-    ],
-    [
-        "HP LaserJet Pro",
-        "HP",
-        "HP Store",
-        32990,
-        "2024-05-06",
-        "Electronics",
-        "Printer",
-        "HPLJ-2190",
-        "MFP-4104",
-        "INV-HP-2024-045",
-        "Admin floor printer",
-        "",
-        "Hyderabad Office",
-        "Admin Team",
-        "yes",
-        "HP",
-        "manufacturer",
-        "2024-05-06",
-        "2025-05-05",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "no",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "no",
-        "no",
-        "yes",
-        "quarterly",
-        "",
-        "yes",
-    ],
-    [
-        "Daikin Split AC",
-        "Daikin",
-        "Cooling Hub",
-        48750,
-        "2024-05-22",
-        "Appliances",
-        "Air Conditioner",
-        "DKAC-8804",
-        "FTKF50",
-        "INV-DKN-2024-061",
-        "Server room AC",
-        "24x7 operation",
-        "Data Center",
-        "Infra Team",
-        "yes",
-        "Daikin",
-        "manufacturer",
-        "2024-05-22",
-        "2026-05-21",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "yes",
-        "Tata AIG",
-        "POL-AC-9012",
-        "2024-05-22",
-        "2025-05-21",
-        2750,
-        "Compressor cover",
-        "yes",
-        "yes",
-        "yes",
-        "half_yearly",
-        "",
-        "yes",
-    ],
-    [
-        "Godrej Refrigerator",
-        "Godrej",
-        "HomeTown",
-        28990,
-        "2024-06-02",
-        "Appliances",
-        "Refrigerator",
-        "GDRF-5501",
-        "RT-EON",
-        "INV-GOD-2024-033",
-        "Pantry refrigerator",
-        "",
-        "Kolkata Office",
-        "Office Ops",
-        "yes",
-        "Godrej Care",
-        "manufacturer",
-        "2024-06-02",
-        "2027-06-01",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "no",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "no",
-        "no",
-        "yes",
-        "yearly",
-        "",
-        "yes",
-    ],
-    [
-        "Bosch Drill Kit",
-        "Bosch",
-        "Tool Mart",
-        14999,
-        "2024-06-19",
-        "Tools",
-        "Power Tools",
-        "BSCH-DR-118",
-        "GSB-13",
-        "INV-BOS-2024-018",
-        "Maintenance toolkit",
-        "Includes bits set",
-        "Maintenance Room",
-        "Facilities",
-        "yes",
-        "Bosch",
-        "manufacturer",
-        "2024-06-19",
-        "2026-06-18",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "no",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "no",
-        "no",
-        "yes",
-        "custom",
-        120,
-        "yes",
-    ],
-    [
-        "Lenovo ThinkPad E14",
-        "Lenovo",
-        "Lenovo Store",
-        78999,
-        "2024-07-03",
-        "Electronics",
-        "Laptop",
-        "LTP-E14-562",
-        "ThinkPad-E14",
-        "INV-LEN-2024-072",
-        "HR team laptop",
-        "",
-        "Delhi Office",
-        "Kiran P",
-        "yes",
-        "Lenovo",
-        "manufacturer",
-        "2024-07-03",
-        "2027-07-02",
-        "",
-        "yes",
-        "yes",
-        "yes",
-        "yes",
-        "New India Assurance",
-        "POL-LEN-3391",
-        "2024-07-03",
-        "2025-07-02",
-        4100,
-        "Transit damage",
-        "yes",
-        "yes",
-        "yes",
-        "yearly",
-        "",
-        "yes",
-    ],
+    _sample_asset_row(product_name="MacBook Pro 16", category="Electronics", subcategory="Laptops", vendor="iStore", purchase_date="2024-01-12", price=249999, serial_number="MBP16-001", model_number="A2780", invoice_number="INV-APL-2024-001", location="Bangalore HQ", assigned_user="Asha N", description="Engineering laptop", notes="Issued to design team", warranty_provider="Apple Care", warranty_end_date="2027-01-11", warranty_notes="3 year plan", insurance_available="Yes", insurance_provider="HDFC Ergo", insurance_policy_number="POL-APL-9910", insurance_start_date="2024-01-12", insurance_expiry_date="2025-01-11", insurance_premium_amount=12999, insurance_coverage_notes="Accidental damage cover"),
+    _sample_asset_row(product_name="Dell XPS 13", category="Electronics", subcategory="Laptops", vendor="Dell Store", purchase_date="2024-02-03", price=145000, serial_number="DX13-7781", model_number="XPS-9315", invoice_number="INV-DEL-2024-013", location="Mumbai Office", assigned_user="Rohit M", description="Sales leadership laptop", warranty_provider="Dell Warranty", warranty_type="extended", warranty_end_date="2026-02-02", warranty_notes="Extended coverage", service_frequency="half_yearly"),
+    _sample_asset_row(product_name="iPhone 15", category="Electronics", subcategory="Mobile Phones", vendor="Unicorn", purchase_date="2024-03-15", price=89900, serial_number="IPH15-9981", model_number="A3090", invoice_number="INV-APL-2024-089", location="Chennai Branch", assigned_user="Priya S", description="Executive phone", notes="Dual SIM setup", warranty_provider="Apple Care+", warranty_end_date="2026-03-14", insurance_available="Yes", insurance_provider="Bajaj Allianz", insurance_policy_number="POL-IPH-4401", insurance_start_date="2024-03-15", insurance_expiry_date="2025-03-14", insurance_premium_amount=5500, insurance_coverage_notes="Screen and theft cover"),
+    _sample_asset_row(product_name="Samsung Galaxy Tab S9", category="Electronics", subcategory="Tablets", vendor="Samsung Plaza", purchase_date="2024-03-21", price=72999, serial_number="TABS9-201", model_number="SM-X710", invoice_number="INV-SAM-2024-090", location="Hyderabad Office", assigned_user="Field Team", description="Customer demo tablet", notes="Includes stylus", warranty_provider="Samsung Care", warranty_end_date="2026-03-20", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="LG 27 Monitor", category="Electronics", subcategory="Monitors", vendor="Reliance Digital", purchase_date="2024-04-02", price=22999, serial_number="LGMON-873", model_number="27UP650", invoice_number="INV-LG-2024-115", location="Pune Office", assigned_user="Design Bay", description="4K productivity monitor", warranty_provider="LG India", warranty_end_date="2027-04-01"),
+    _sample_asset_row(product_name="HP LaserJet Pro", category="Electronics", subcategory="Printers & Scanners", vendor="HP Store", purchase_date="2024-04-11", price=32990, serial_number="HPLJ-2190", model_number="MFP-4104", invoice_number="INV-HP-2024-045", location="Admin Floor", assigned_user="Admin Team", description="High-volume office printer", warranty_provider="HP", warranty_end_date="2025-04-10", service_frequency="quarterly"),
+    _sample_asset_row(product_name="TP-Link Archer AX55", category="Electronics", subcategory="Routers & Modems", vendor="Amazon Business", purchase_date="2024-04-18", price=8999, serial_number="TPL-AX55-91", model_number="AX55", invoice_number="INV-TPL-2024-028", location="Network Room", assigned_user="Infra Team", description="Backup office router", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="SanDisk Extreme SSD 1TB", category="Electronics", subcategory="External Storage (HDD/SSD)", vendor="Croma", purchase_date="2024-04-30", price=11499, serial_number="SDK-SSD-1001", model_number="SDSSDE61", invoice_number="INV-SDK-2024-041", location="Media Lab", assigned_user="Content Team", description="Portable backup SSD", warranty_provider="SanDisk", warranty_end_date="2029-04-29", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="OnePlus Power Bank 20000mAh", category="Electronics", subcategory="Power Banks", vendor="OnePlus Store", purchase_date="2024-05-05", price=2499, serial_number="PB-20000-19", model_number="PB20K", invoice_number="INV-OP-2024-053", location="Travel Desk", assigned_user="Sales Team", description="Travel accessory stock", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="boAt Charger 65W", category="Electronics", subcategory="Chargers & Adapters", vendor="Flipkart Business", purchase_date="2024-05-12", price=1999, serial_number="BOAT-CHR-65", model_number="Super65", invoice_number="INV-BOAT-2024-061", location="IT Store", assigned_user="Support Desk", description="Laptop fast charger", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="Samsung 55 Smart TV", category="Home Appliances", subcategory="Televisions", vendor="Reliance Digital", purchase_date="2024-05-28", price=62999, serial_number="SAMTV55-773", model_number="UA55AU7700", invoice_number="INV-SAM-2024-114", location="Meeting Room 2", assigned_user="Facilities", description="Meeting room display", notes="Wall mounted", warranty_provider="Samsung Care", warranty_type="extended", warranty_end_date="2027-05-27", insurance_available="Yes", insurance_provider="ICICI Lombard", insurance_policy_number="POL-TV-7782", insurance_start_date="2024-05-28", insurance_expiry_date="2025-05-27", insurance_premium_amount=3800, insurance_coverage_notes="Power surge cover"),
+    _sample_asset_row(product_name="Daikin Split AC", category="Home Appliances", subcategory="Air Conditioners", vendor="Cooling Hub", purchase_date="2024-06-04", price=48750, serial_number="DKAC-8804", model_number="FTKF50", invoice_number="INV-DKN-2024-061", location="Server Room", assigned_user="Infra Team", description="Critical cooling unit", notes="24x7 operation", warranty_provider="Daikin", warranty_end_date="2026-06-03", insurance_available="Yes", insurance_provider="Tata AIG", insurance_policy_number="POL-AC-9012", insurance_start_date="2024-06-04", insurance_expiry_date="2025-06-03", insurance_premium_amount=2750, insurance_coverage_notes="Compressor cover", service_frequency="half_yearly"),
+    _sample_asset_row(product_name="Godrej Refrigerator", category="Home Appliances", subcategory="Refrigerators", vendor="HomeTown", purchase_date="2024-06-13", price=28990, serial_number="GDRF-5501", model_number="RT-EON", invoice_number="INV-GOD-2024-033", location="Pantry", assigned_user="Office Ops", description="Office pantry refrigerator", warranty_provider="Godrej Care", warranty_end_date="2027-06-12"),
+    _sample_asset_row(product_name="Voltas Water Purifier", category="Home Appliances", subcategory="Water Purifiers", vendor="Vijay Sales", purchase_date="2024-06-24", price=15499, serial_number="VT-WP-331", model_number="RO-Plus", invoice_number="INV-VOL-2024-044", location="Cafeteria", assigned_user="Facilities", description="RO water purifier", warranty_provider="Voltas", warranty_end_date="2025-06-23", service_frequency="quarterly"),
+    _sample_asset_row(product_name="Blue Star Air Cooler", category="Home Appliances", subcategory="Air Coolers", vendor="Amazon Business", purchase_date="2024-07-02", price=10999, serial_number="BSTAR-ACR-88", model_number="CoolBreeze", invoice_number="INV-BS-2024-050", location="Reception", assigned_user="Front Office", description="Seasonal cooling unit", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="IKEA Ergonomic Chair", category="Furniture", subcategory="Chairs", vendor="IKEA", purchase_date="2024-07-08", price=12999, serial_number="IKEA-CHR-204", model_number="MARKUS", invoice_number="INV-IK-2024-071", location="Bangalore HQ", assigned_user="Engineering", description="Ergonomic workstation chair", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", insurance_available="No", service_frequency="", service_required="No", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="Conference Table 10-Seater", category="Furniture", subcategory="Tables", vendor="Urban Ladder Business", purchase_date="2024-07-14", price=45999, serial_number="CONF-TBL-10", model_number="UL-CF10", invoice_number="INV-UL-2024-081", location="Board Room", assigned_user="Admin Team", description="Solid wood conference table", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", insurance_available="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="Godrej Office Desk", category="Furniture", subcategory="Office Desks", vendor="Godrej Interio", purchase_date="2024-07-19", price=18999, serial_number="GOD-DESK-08", model_number="GI-DeskPro", invoice_number="INV-GI-2024-095", location="Finance Bay", assigned_user="Finance Team", description="Height-adjustable office desk", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", insurance_available="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="TV Unit Walnut Finish", category="Furniture", subcategory="TV Units", vendor="Pepperfry", purchase_date="2024-07-27", price=22499, serial_number="PF-TVU-443", model_number="Walnut-One", invoice_number="INV-PF-2024-109", location="Guest Lounge", assigned_user="Facilities", description="Lounge storage unit", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", insurance_available="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="Sony WH-1000XM5", category="Personal Gadgets", subcategory="Headphones", vendor="Sony Center", purchase_date="2024-08-03", price=29990, serial_number="SONY-XM5-77", model_number="WH1000XM5", invoice_number="INV-SONY-2024-121", location="Studio", assigned_user="Media Desk", description="Noise-cancelling headphones", warranty_provider="Sony", warranty_end_date="2025-08-02", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="Apple Watch Series 9", category="Personal Gadgets", subcategory="Smart Watches", vendor="Imagine", purchase_date="2024-08-11", price=42999, serial_number="AWS9-331", model_number="A2982", invoice_number="INV-AW-2024-136", location="Demo Kit", assigned_user="Product Team", description="Wearable for demo use", warranty_provider="Apple", warranty_end_date="2025-08-10", insurance_available="Yes", insurance_provider="HDFC Ergo", insurance_policy_number="POL-AW-1099", insurance_start_date="2024-08-11", insurance_expiry_date="2025-08-10", insurance_premium_amount=1999, insurance_coverage_notes="Damage protection", service_required="No", service_frequency="", service_reminder_enabled="No"),
+    _sample_asset_row(product_name="Canon EOS R50", category="Personal Gadgets", subcategory="Cameras", vendor="PhotoWorld", purchase_date="2024-08-20", price=84999, serial_number="CAN-R50-22", model_number="EOS-R50", invoice_number="INV-CAN-2024-142", location="Studio", assigned_user="Content Team", description="Campaign camera body", warranty_provider="Canon India", warranty_end_date="2026-08-19", insurance_available="Yes", insurance_provider="Bajaj Allianz", insurance_policy_number="POL-CAM-7821", insurance_start_date="2024-08-20", insurance_expiry_date="2025-08-19", insurance_premium_amount=3600, insurance_coverage_notes="Lens and body coverage", service_frequency="quarterly"),
+    _sample_asset_row(product_name="Hero Electric Scooter", category="Vehicles", subcategory="Electric Vehicles", vendor="Hero Electric", purchase_date="2024-09-02", price=112000, serial_number="HEV-2209", model_number="Optima CX", invoice_number="INV-HE-2024-151", location="Parking B2", assigned_user="Office Runner", description="Intra-campus transport", notes="Charged nightly", warranty_provider="Hero Electric", warranty_end_date="2027-09-01", insurance_available="Yes", insurance_provider="ICICI Lombard", insurance_policy_number="POL-EV-5510", insurance_start_date="2024-09-02", insurance_expiry_date="2025-09-01", insurance_premium_amount=6200, insurance_coverage_notes="Third-party + own damage", service_frequency="half_yearly"),
+    _sample_asset_row(product_name="Maruti Ertiga", category="Vehicles", subcategory="Cars", vendor="Nexa", purchase_date="2024-09-14", price=1145000, serial_number="ERT-2024-01", model_number="ZXI+", invoice_number="INV-NEXA-2024-177", location="Company Fleet", assigned_user="Transport Team", description="Staff commute vehicle", warranty_provider="Maruti Suzuki", warranty_end_date="2026-09-13", insurance_available="Yes", insurance_provider="Tata AIG", insurance_policy_number="POL-CAR-2201", insurance_start_date="2024-09-14", insurance_expiry_date="2025-09-13", insurance_premium_amount=28750, insurance_coverage_notes="Comprehensive cover", service_frequency="quarterly"),
+    _sample_asset_row(product_name="Firefox Commuter Cycle", category="Vehicles", subcategory="Bicycles", vendor="Decathlon", purchase_date="2024-09-26", price=18999, serial_number="FFC-1092", model_number="Urban 700C", invoice_number="INV-DCT-2024-188", location="Cycle Stand", assigned_user="Security Desk", description="Campus movement bicycle", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", insurance_available="No", service_frequency="custom", service_custom_interval_days=120),
+    _sample_asset_row(product_name="Executive Visitor Sofa", category="Furniture", subcategory="Sofas", vendor="Home Centre", purchase_date="2024-10-04", price=38999, serial_number="SOFA-VC-09", model_number="Lounge-3S", invoice_number="INV-HC-2024-201", location="Reception Lounge", assigned_user="Front Office", description="3-seater visitor sofa", warranty_available="No", warranty_provider="", warranty_type="", warranty_start_date="", warranty_end_date="", warranty_notes="", warranty_reminder_30_days="No", warranty_reminder_7_days="No", warranty_reminder_on_expiry="No", insurance_available="No", service_required="No", service_frequency="", service_reminder_enabled="No"),
 ]
+
+
+def _normalized_header_name(value: Any) -> str:
+    text = str(value or "").lower().replace("_", " ")
+    normalized = "".join(character if character.isalnum() or character == " " else " " for character in text)
+    return " ".join(normalized.split())
+
+
+def _header_aliases_for_field(field: dict[str, Any]) -> set[str]:
+    key = str(field["key"])
+    label = str(field["label"])
+    aliases = {
+        _normalized_header_name(key),
+        _normalized_header_name(label),
+    }
+    if key == "price":
+        aliases.add(_normalized_header_name("Price"))
+    if key == "insurance_coverage_notes":
+        aliases.add(_normalized_header_name("Coverage Notes"))
+    return aliases
+
+
+EXCEL_TEMPLATE_HEADER_ALIASES = {
+    field["key"]: _header_aliases_for_field(field)
+    for field in EXCEL_TEMPLATE_FIELDS
+}
+
+
+def _template_row_values(row: dict[str, Any]) -> list[Any]:
+    return [row.get(column, "") for column in EXCEL_TEMPLATE_COLUMNS]
+
+
+def _excel_named_range_name(category_name: str, index: int) -> str:
+    sanitized = "".join(character if character.isalnum() else "_" for character in category_name.strip())
+    sanitized = sanitized.strip("_") or f"Category_{index}"
+    if sanitized[0].isdigit():
+        sanitized = f"Category_{sanitized}"
+    return f"SubCategory_{index}_{sanitized}"[:255]
+
+
+def _add_defined_name(workbook: Workbook, name: str, attr_text: str) -> None:
+    defined_name = DefinedName(name=name, attr_text=attr_text)
+    try:
+        workbook.defined_names.add(defined_name)
+    except AttributeError:
+        workbook.defined_names.append(defined_name)
+
+
+async def _get_template_category_map(db) -> dict[str, list[str]]:
+    try:
+        category_rows = await db["categories"].find({"is_active": {"$ne": False}}).sort("category", 1).to_list(length=1000)
+        category_ids: list[str] = []
+        category_names: dict[str, str] = {}
+        for row in category_rows:
+            category_id = str(row.get("_id", "")).strip()
+            category_name = _text(row.get("name") or row.get("category"))
+            if not category_id or not category_name:
+                continue
+            category_ids.append(category_id)
+            category_names[category_id] = category_name
+
+        if category_ids:
+            subcategory_rows = await db["subcategories"].find(
+                {"category_id": {"$in": category_ids}, "is_active": {"$ne": False}}
+            ).to_list(length=5000)
+            subcategory_map: dict[str, list[str]] = {category_id: [] for category_id in category_ids}
+            for row in subcategory_rows:
+                category_id = str(row.get("category_id", "")).strip()
+                subcategory_name = _text(row.get("name"))
+                if not category_id or not subcategory_name:
+                    continue
+                subcategory_map.setdefault(category_id, []).append(subcategory_name)
+
+            category_map = {
+                category_names[category_id]: sorted({*_dedupe_case_insensitive(subcategory_map.get(category_id, []))}, key=str.lower)
+                for category_id in category_ids
+                if category_id in category_names
+            }
+            if category_map:
+                return category_map
+    except Exception:
+        pass
+
+    return {
+        category: list(subcategories)
+        for category, subcategories in FINAL_CATEGORY_SUBCATEGORIES.items()
+    }
+
+
+def _dedupe_case_insensitive(values: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = _text(raw)
+        if not value:
+            continue
+        normalized = value.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(value)
+    return unique
+
+
+def _apply_template_styles(sheet) -> None:
+    for cell in sheet[1]:
+        cell.font = EXCEL_TEMPLATE_HEADER_FONT
+        cell.fill = EXCEL_TEMPLATE_HEADER_FILL
+
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
+
+    for index, column_cells in enumerate(sheet.columns, start=1):
+        values = [str(cell.value) for cell in column_cells if cell.value not in (None, "")]
+        width = max((len(value) for value in values), default=12)
+        sheet.column_dimensions[get_column_letter(index)].width = min(max(width + 2, 14), 34)
+
+
+def _apply_template_number_formats(sheet) -> None:
+    for field_index, field in enumerate(EXCEL_TEMPLATE_FIELDS, start=1):
+        column_letter = get_column_letter(field_index)
+        if field["type"] == "date":
+            for row_index in range(2, sheet.max_row + 1):
+                sheet[f"{column_letter}{row_index}"].number_format = "yyyy-mm-dd"
+        if field["type"] == "number":
+            for row_index in range(2, sheet.max_row + 1):
+                sheet[f"{column_letter}{row_index}"].number_format = "#,##0.00"
+
+
+def _build_master_data_sheet(workbook: Workbook, category_map: dict[str, list[str]]) -> None:
+    master_sheet = workbook.create_sheet(EXCEL_TEMPLATE_MASTER_SHEET_NAME)
+    master_sheet.sheet_state = "hidden"
+
+    categories = sorted(_dedupe_case_insensitive(list(category_map.keys())), key=str.lower)
+    all_subcategories = _dedupe_case_insensitive(
+        sorted(
+            {subcategory for subcategories in category_map.values() for subcategory in subcategories},
+            key=str.lower,
+        )
+    )
+
+    master_sheet["A1"] = "Categories"
+    for row_index, category in enumerate(categories, start=2):
+        master_sheet[f"A{row_index}"] = category
+
+    master_sheet["C1"] = "Category"
+    master_sheet["D1"] = "NamedRange"
+    for row_index, category in enumerate(categories, start=2):
+        master_sheet[f"C{row_index}"] = category
+        master_sheet[f"D{row_index}"] = _excel_named_range_name(category, row_index - 1)
+
+    master_sheet["E1"] = "AllSubcategories"
+    for row_index, subcategory in enumerate(all_subcategories, start=2):
+        master_sheet[f"E{row_index}"] = subcategory
+
+    quoted_sheet_name = quote_sheetname(EXCEL_TEMPLATE_MASTER_SHEET_NAME)
+    if categories:
+        _add_defined_name(workbook, "CategoryOptions", f"{quoted_sheet_name}!$A$2:$A${len(categories) + 1}")
+    if all_subcategories:
+        _add_defined_name(workbook, "AllSubcategories", f"{quoted_sheet_name}!$E$2:$E${len(all_subcategories) + 1}")
+
+    for offset, category in enumerate(categories, start=6):
+        column_letter = get_column_letter(offset)
+        subcategories = _dedupe_case_insensitive(category_map.get(category, []))
+        master_sheet[f"{column_letter}1"] = category
+        for row_index, subcategory in enumerate(subcategories, start=2):
+            master_sheet[f"{column_letter}{row_index}"] = subcategory
+
+        if subcategories:
+            named_range = _excel_named_range_name(category, offset - 5)
+            _add_defined_name(
+                workbook,
+                named_range,
+                f"{quoted_sheet_name}!${column_letter}$2:${column_letter}${len(subcategories) + 1}",
+            )
+
+
+def _apply_template_validations(sheet, workbook: Workbook, category_map: dict[str, list[str]]) -> None:
+    category_index = EXCEL_TEMPLATE_COLUMNS.index("category") + 1
+    subcategory_index = EXCEL_TEMPLATE_COLUMNS.index("subcategory") + 1
+    category_column = get_column_letter(category_index)
+
+    data_end_row = max(EXCEL_TEMPLATE_ROW_LIMIT, sheet.max_row)
+
+    list_validations = {
+        "warranty_available": '"Yes,No"',
+        "warranty_type": '"manufacturer,extended"',
+        "warranty_reminder_30_days": '"Yes,No"',
+        "warranty_reminder_7_days": '"Yes,No"',
+        "warranty_reminder_on_expiry": '"Yes,No"',
+        "insurance_available": '"Yes,No"',
+        "insurance_reminder_45_days": '"Yes,No"',
+        "insurance_reminder_15_days": '"Yes,No"',
+        "service_required": '"Yes,No"',
+        "service_frequency": '"monthly,quarterly,half_yearly,yearly,custom"',
+        "service_reminder_enabled": '"Yes,No"',
+    }
+
+    for key, formula in list_validations.items():
+        field_index = EXCEL_TEMPLATE_COLUMNS.index(key) + 1
+        column_letter = get_column_letter(field_index)
+        validation = DataValidation(type="list", formula1=formula, allow_blank=True)
+        sheet.add_data_validation(validation)
+        validation.add(f"{column_letter}2:{column_letter}{data_end_row}")
+
+    category_validation = DataValidation(type="list", formula1="=CategoryOptions", allow_blank=False)
+    sheet.add_data_validation(category_validation)
+    category_validation.add(f"{category_column}2:{category_column}{data_end_row}")
+
+    mapping_end_row = len(category_map) + 1
+    subcategory_validation_formula = (
+        f'=INDIRECT(IFERROR(VLOOKUP(${category_column}2,{quote_sheetname(EXCEL_TEMPLATE_MASTER_SHEET_NAME)}!$C$2:$D${mapping_end_row},2,FALSE),"AllSubcategories"))'
+    )
+    subcategory_validation = DataValidation(type="list", formula1=subcategory_validation_formula, allow_blank=False)
+    sheet.add_data_validation(subcategory_validation)
+    subcategory_column = get_column_letter(subcategory_index)
+    subcategory_validation.add(f"{subcategory_column}2:{subcategory_column}{data_end_row}")
+
+    for field in EXCEL_TEMPLATE_FIELDS:
+        field_index = EXCEL_TEMPLATE_COLUMNS.index(field["key"]) + 1
+        column_letter = get_column_letter(field_index)
+        if field["type"] == "date":
+            validation = DataValidation(type="date", operator="between", formula1="DATE(1900,1,1)", formula2="DATE(9999,12,31)", allow_blank=True)
+            sheet.add_data_validation(validation)
+            validation.add(f"{column_letter}2:{column_letter}{data_end_row}")
+        if field["type"] == "number":
+            validation = DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", allow_blank=True)
+            sheet.add_data_validation(validation)
+            validation.add(f"{column_letter}2:{column_letter}{data_end_row}")
+
+
+def _normalize_excel_row(row: dict[str, Any]) -> dict[str, Any]:
+    normalized_row = dict(row)
+
+    category = _text(normalized_row.get("category"))
+    custom_category = _text(normalized_row.get("custom_category"))
+    if category.lower() == "other" and custom_category:
+        normalized_row["category"] = custom_category
+
+    subcategory = _text(normalized_row.get("subcategory"))
+    custom_subcategory = _text(normalized_row.get("custom_subcategory"))
+    if subcategory.lower() == "other" and custom_subcategory:
+        normalized_row["subcategory"] = custom_subcategory
+
+    return normalized_row
 
 
 def _to_asset(item: dict[str, Any]) -> dict[str, Any]:
@@ -535,6 +490,131 @@ def _to_iso_date_text(value: Any) -> str | None:
         return parsed.date().isoformat()
     except ValueError:
         return text
+
+
+def _is_valid_date_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (datetime, date)):
+        return True
+
+    text = _text(value)
+    if not text:
+        return True
+
+    normalized = text.replace("Z", "+00:00")
+    try:
+        datetime.fromisoformat(normalized)
+        return True
+    except ValueError:
+        pass
+
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            datetime.strptime(text, fmt)
+            return True
+        except ValueError:
+            continue
+
+    return False
+
+
+async def _get_upload_validation_category_map(db) -> tuple[dict[str, str], dict[str, set[str]]]:
+    category_lookup: dict[str, str] = {}
+    subcategory_lookup: dict[str, set[str]] = {}
+
+    try:
+        category_rows = await db["categories"].find({"is_active": {"$ne": False}}).to_list(length=1000)
+        category_id_lookup: dict[str, str] = {}
+        category_id_to_key: dict[str, str] = {}
+        for row in category_rows:
+            category_id = str(row.get("_id", "")).strip()
+            category_name = _text(row.get("name") or row.get("category"))
+            if not category_id or not category_name:
+                continue
+            category_key = category_name.lower()
+            category_lookup[category_key] = category_name
+            category_id_lookup[category_id] = category_name
+            category_id_to_key[category_id] = category_key
+            subcategory_lookup.setdefault(category_key, set())
+
+        if category_id_lookup:
+            subcategory_rows = await db["subcategories"].find(
+                {
+                    "category_id": {"$in": list(category_id_lookup.keys())},
+                    "is_active": {"$ne": False},
+                }
+            ).to_list(length=5000)
+            for row in subcategory_rows:
+                category_id = str(row.get("category_id", "")).strip()
+                subcategory_name = _text(row.get("name"))
+                category_key = category_id_to_key.get(category_id)
+                if not category_key or not subcategory_name:
+                    continue
+                subcategory_lookup.setdefault(category_key, set()).add(subcategory_name.lower())
+
+        if category_lookup:
+            return category_lookup, subcategory_lookup
+    except Exception:
+        pass
+
+    for category, subcategories in FINAL_CATEGORY_SUBCATEGORIES.items():
+        category_key = _text(category).lower()
+        if not category_key:
+            continue
+        category_lookup[category_key] = _text(category)
+        subcategory_lookup[category_key] = {
+            _text(subcategory).lower()
+            for subcategory in subcategories
+            if _text(subcategory)
+        }
+
+    return category_lookup, subcategory_lookup
+
+
+def _validate_excel_row(
+    row: dict[str, Any],
+    category_lookup: dict[str, str],
+    subcategory_lookup: dict[str, set[str]],
+) -> list[str]:
+    errors: list[str] = []
+
+    product_name = _text(row.get("product_name"))
+    if not product_name:
+        errors.append("Asset Name is required")
+
+    category = _text(row.get("category"))
+    subcategory = _text(row.get("subcategory"))
+    canonical_category_key = category.lower() if category else ""
+
+    if not category:
+        errors.append("Category is required")
+    elif canonical_category_key not in category_lookup:
+        errors.append("Invalid category")
+
+    if not subcategory:
+        errors.append("SubCategory is required")
+    elif canonical_category_key in subcategory_lookup:
+        if subcategory.lower() not in subcategory_lookup.get(canonical_category_key, set()):
+            errors.append("Invalid subcategory for selected category")
+
+    purchase_date_value = row.get("purchase_date")
+    if _text(purchase_date_value) and not _is_valid_date_value(purchase_date_value):
+        errors.append("Purchase Date must be a valid date")
+
+    purchase_price_value = row.get("price")
+    if _text(purchase_price_value) and _to_number(purchase_price_value) is None:
+        errors.append("Purchase Price must be numeric")
+
+    warranty_start_date = row.get("warranty_start_date")
+    if _text(warranty_start_date) and not _is_valid_date_value(warranty_start_date):
+        errors.append("Warranty Start Date must be a valid date")
+
+    warranty_end_date = row.get("warranty_end_date")
+    if _text(warranty_end_date) and not _is_valid_date_value(warranty_end_date):
+        errors.append("Warranty End Date must be a valid date")
+
+    return errors
 
 
 def _to_excel_suggestion(row: dict[str, Any], row_number: int, duplicate_asset_id: str | None) -> dict[str, Any]:
@@ -737,14 +817,21 @@ async def _find_duplicate_asset(payload: dict[str, Any], user_id: str, db) -> di
 
 
 @router.get("/excel/template")
-async def download_excel_template(current_user: dict[str, str] = Depends(get_current_user)):
+async def download_excel_template(current_user: dict[str, str] = Depends(get_current_user), db=Depends(get_db)):
+    _ = current_user
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Assets"
-    sheet.append(EXCEL_TEMPLATE_COLUMNS)
+    sheet.title = EXCEL_TEMPLATE_SHEET_NAME
+    sheet.append(EXCEL_TEMPLATE_HEADERS)
 
     for row in EXCEL_TEMPLATE_SAMPLE_ROWS:
-        sheet.append(row)
+        sheet.append(_template_row_values(row))
+
+    category_map = await _get_template_category_map(db)
+    _build_master_data_sheet(workbook, category_map)
+    _apply_template_styles(sheet)
+    _apply_template_number_formats(sheet)
+    _apply_template_validations(sheet, workbook, category_map)
 
     payload = BytesIO()
     workbook.save(payload)
@@ -765,33 +852,54 @@ async def upload_excel_file(
 ) -> dict[str, Any]:
     file_name = (file.filename or "").lower()
     if not file_name.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Only .xlsx files are supported")
+        raise HTTPException(status_code=400, detail="Invalid file format or empty file")
 
     content = await file.read()
     if not content:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        raise HTTPException(status_code=400, detail="Invalid file format or empty file")
 
     try:
         workbook = load_workbook(filename=BytesIO(content), data_only=True)
     except Exception as error:
-        raise HTTPException(status_code=400, detail="Invalid Excel file") from error
+        raise HTTPException(status_code=400, detail="Invalid file format or empty file") from error
 
     sheet = workbook.active
     rows = list(sheet.iter_rows(values_only=True))
     if not rows:
-        raise HTTPException(status_code=400, detail="Excel sheet is empty")
+        raise HTTPException(status_code=400, detail="Invalid file format or empty file")
 
-    headers = [_normalized_lower(header) for header in (rows[0] or [])]
-    missing_headers = [column for column in EXCEL_TEMPLATE_COLUMNS if column not in headers]
+    normalized_headers = [_normalized_header_name(header) for header in (rows[0] or [])]
+    header_index_by_alias: dict[str, int] = {}
+    for index, header in enumerate(normalized_headers):
+        if header and header not in header_index_by_alias:
+            header_index_by_alias[header] = index
+
+    missing_headers = [
+        EXCEL_TEMPLATE_HEADER_BY_KEY[column]
+        for column in EXCEL_TEMPLATE_COLUMNS
+        if not any(alias in header_index_by_alias for alias in EXCEL_TEMPLATE_HEADER_ALIASES[column])
+    ]
     if missing_headers:
         raise HTTPException(
             status_code=400,
-            detail=f"Template columns missing: {', '.join(missing_headers)}",
+            detail="Invalid template. Please use the correct format",
         )
 
-    header_index = {column: headers.index(column) for column in EXCEL_TEMPLATE_COLUMNS}
+    header_index = {
+        column: next(
+            header_index_by_alias[alias]
+            for alias in EXCEL_TEMPLATE_HEADER_ALIASES[column]
+            if alias in header_index_by_alias
+        )
+        for column in EXCEL_TEMPLATE_COLUMNS
+    }
+    category_lookup, subcategory_lookup = await _get_upload_validation_category_map(db)
+
     suggestions: list[dict[str, Any]] = []
     skipped_rows: list[dict[str, Any]] = []
+    row_results: list[dict[str, Any]] = []
+    valid_rows = 0
+    invalid_rows = 0
 
     for index, excel_row in enumerate(rows[1:], start=2):
         row_map: dict[str, Any] = {}
@@ -799,32 +907,60 @@ async def upload_excel_file(
             position = header_index[column]
             row_map[column] = excel_row[position] if position < len(excel_row) else None
 
+        row_map = _normalize_excel_row(row_map)
+
         if not any(_text(value) for value in row_map.values()):
+            skipped_rows.append({"row_number": index, "reason": "Empty row"})
             continue
 
-        if not _text(row_map.get("product_name")):
-            skipped_rows.append({"row_number": index, "reason": "product_name is required"})
-            continue
+        validation_errors = _validate_excel_row(row_map, category_lookup, subcategory_lookup)
+        is_valid = len(validation_errors) == 0
 
-        duplicate = await _find_duplicate_asset(
-            {
-                "name": row_map.get("product_name"),
-                "vendor": row_map.get("vendor"),
-                "purchase_date": _to_iso_date_text(row_map.get("purchase_date")),
-                "invoice_number": row_map.get("invoice_number"),
-            },
-            current_user["id"],
-            db,
-        )
+        duplicate_asset_id: str | None = None
+        if is_valid:
+            duplicate = await _find_duplicate_asset(
+                {
+                    "name": row_map.get("product_name"),
+                    "vendor": row_map.get("vendor"),
+                    "purchase_date": _to_iso_date_text(row_map.get("purchase_date")),
+                    "invoice_number": row_map.get("invoice_number"),
+                },
+                current_user["id"],
+                db,
+            )
+            duplicate_asset_id = str(duplicate.get("_id")) if duplicate else None
 
-        duplicate_asset_id = str(duplicate.get("_id")) if duplicate else None
         suggestion = _to_excel_suggestion(row_map, index, duplicate_asset_id)
+        suggestion["row_number"] = index - 1
+        suggestion["validation_status"] = "valid" if is_valid else "invalid"
+        suggestion["validation_errors"] = validation_errors
+        if not is_valid:
+            suggestion["status"] = "invalid"
+            suggestion["already_added"] = False
+            suggestion["asset_id"] = None
+
         suggestions.append(suggestion)
+
+        row_results.append(
+            {
+                "row": index - 1,
+                "status": "valid" if is_valid else "invalid",
+                "errors": validation_errors,
+            }
+        )
+        if is_valid:
+            valid_rows += 1
+        else:
+            invalid_rows += 1
 
     return {
         "file_name": file.filename,
+        "total": len(row_results),
+        "valid": valid_rows,
+        "invalid": invalid_rows,
+        "data": row_results,
         "total_rows": max(len(rows) - 1, 0),
-        "parsed_rows": len(suggestions),
+        "parsed_rows": valid_rows,
         "skipped_rows": skipped_rows,
         "suggestions": suggestions,
     }

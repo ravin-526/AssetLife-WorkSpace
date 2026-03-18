@@ -2,6 +2,7 @@
 import { FormEvent, useMemo, useState } from "react";
 
 import OtpInput from "../../components/OtpInput.tsx";
+import useAutoDismissMessage from "../../hooks/useAutoDismissMessage.ts";
 import api from "../../services/api";
 import theme from "../../styles/theme";
 import useUserStore from "../../store/userStore";
@@ -25,6 +26,8 @@ const Login = () => {
   const [errors, setErrors] = useState<{ phone?: string; otp?: string }>({});
   const [apiError, setApiError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useAutoDismissMessage(apiError, setApiError, { delay: 5000 });
 
   const login = useUserStore((state) => state.login);
 

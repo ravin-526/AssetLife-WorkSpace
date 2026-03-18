@@ -3,6 +3,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import OtpInput from "../../components/OtpInput.tsx";
+import useAutoDismissMessage from "../../hooks/useAutoDismissMessage.ts";
 import api from "../../services/api";
 import useUserStore, { UserData } from "../../store/userStore";
 import theme from "../../styles/theme";
@@ -32,6 +33,8 @@ const IndividualLogin = () => {
   const [errors, setErrors] = useState<LoginErrors>({});
   const [apiError, setApiError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useAutoDismissMessage(apiError, setApiError, { delay: 5000 });
 
   const login = useUserStore((state) => state.login);
 

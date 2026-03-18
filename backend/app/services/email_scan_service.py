@@ -284,6 +284,13 @@ class EmailScanService:
             try:
                 app_logger.info("Processing email", extra={"message_id": message_id})
                 message = await self.gmail.get_message(access_token, message_id)
+                app_logger.info(
+                    "Raw Gmail message response",
+                    extra={
+                        "message_id": message_id,
+                        "raw_gmail_message": message,
+                    },
+                )
                 payload = message.get("payload", {})
                 payload_headers = payload.get("headers", [])
                 sender, subject = self._extract_sender_subject(payload_headers)

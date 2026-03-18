@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 import { useState } from "react";
 
+import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import { POST_LOGIN_THEME } from "../styles/theme";
 import { resetUserTestData } from "../services/gmail.ts";
 
@@ -22,6 +23,9 @@ const Settings = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState("");
   const [resetError, setResetError] = useState("");
+
+  useAutoDismissMessage(resetMessage, setResetMessage, { delay: 3000 });
+  useAutoDismissMessage(resetError, setResetError, { delay: 5000 });
 
   const handleResetData = async () => {
     // TEMPORARY TESTING FEATURE: remove before production deployment.

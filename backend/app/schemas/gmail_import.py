@@ -155,3 +155,18 @@ class SuggestionParseResponse(BaseModel):
     price: float | None = None
     purchase_date: datetime | None = None
     warranty: str | None = None
+
+
+class SuggestionEmailAttachment(BaseModel):
+    file_name: str
+    mime_type: str | None = None
+    size: int | None = None
+
+
+class SuggestionEmailDetailsResponse(BaseModel):
+    subject: str | None = None
+    sender: str | None = None
+    received_date: datetime | None = None
+    email_body: str | None = None
+    email_body_html: str | None = None
+    attachments: list[SuggestionEmailAttachment] = Field(default_factory=list)

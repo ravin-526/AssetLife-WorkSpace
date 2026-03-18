@@ -42,7 +42,7 @@ const EmailScans = () => {
   const [message, setMessage] = useState("");
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
 
   const loadData = async () => {
     const [scanResponse, suggestionResponse] = await Promise.all([getEmailScans(), getAssetSuggestions()]);

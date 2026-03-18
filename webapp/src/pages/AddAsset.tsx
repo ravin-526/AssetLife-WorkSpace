@@ -12,15 +12,19 @@ import {
   DialogTitle,
   Fade,
   FormControlLabel,
+  IconButton,
   LinearProgress,
   MenuItem,
-  Pagination,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CloseIcon from "@mui/icons-material/Close";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
@@ -40,6 +44,7 @@ import {
   downloadAssetExcelTemplate,
   deleteAssetDocument,
   disconnectMailbox,
+  getAssetCategories,
   getAssetDocuments,
   getAssetSuggestions,
   getMailboxStatus,
@@ -70,6 +75,102 @@ const SYNC_ACTIVITY_STEPS = [
   "Identifying asset information",
   "Generating asset suggestions",
   "Finalizing results",
+];
+
+const EXCEL_TEMPLATE_PREVIEW_COLUMNS: Array<{ key: string; label: string }> = [
+  { key: "product_name", label: "Asset Name *" },
+  { key: "category", label: "Category *" },
+  { key: "custom_category", label: "Category (Other)" },
+  { key: "subcategory", label: "SubCategory *" },
+  { key: "custom_subcategory", label: "Sub Category (Other)" },
+  { key: "vendor", label: "Vendor" },
+  { key: "purchase_date", label: "Purchase Date" },
+  { key: "price", label: "Purchase Price" },
+  { key: "serial_number", label: "Serial Number" },
+  { key: "model_number", label: "Model Number" },
+  { key: "invoice_number", label: "Invoice Number" },
+  { key: "location", label: "Location" },
+  { key: "assigned_user", label: "Assigned User" },
+  { key: "description", label: "Description" },
+  { key: "notes", label: "Notes" },
+  { key: "warranty_available", label: "Warranty Available" },
+  { key: "warranty_provider", label: "Warranty Provider" },
+  { key: "warranty_type", label: "Warranty Type" },
+  { key: "warranty_start_date", label: "Warranty Start Date" },
+  { key: "warranty_end_date", label: "Warranty End Date" },
+  { key: "warranty_notes", label: "Warranty Notes" },
+  { key: "warranty_reminder_30_days", label: "Warranty Reminder 30 Days" },
+  { key: "warranty_reminder_7_days", label: "Warranty Reminder 7 Days" },
+  { key: "warranty_reminder_on_expiry", label: "Warranty Reminder On Expiry" },
+  { key: "insurance_available", label: "Insurance Available" },
+  { key: "insurance_provider", label: "Insurance Provider" },
+  { key: "insurance_policy_number", label: "Policy Number" },
+  { key: "insurance_start_date", label: "Insurance Start Date" },
+  { key: "insurance_expiry_date", label: "Insurance Expiry Date" },
+  { key: "insurance_premium_amount", label: "Insurance Premium Amount" },
+  { key: "insurance_coverage_notes", label: "Insurance Notes" },
+  { key: "insurance_reminder_45_days", label: "Insurance Reminder 45 Days" },
+  { key: "insurance_reminder_15_days", label: "Insurance Reminder 15 Days" },
+  { key: "service_required", label: "Service Required" },
+  { key: "service_frequency", label: "Service Frequency" },
+  { key: "service_custom_interval_days", label: "Service Interval (Days)" },
+  { key: "service_reminder_enabled", label: "Enable Next Service Reminder" },
+];
+
+// Frozen column widths (always pinned on right)
+const FROZEN_COLUMN_WIDTHS = {
+  error: 220,
+  status: 120,
+  actions: 100,
+};
+
+const EXCEL_DEFAULT_PREVIEW_COLUMNS: Array<{ key: string; label: string; width: string }> = [
+  { key: "product_name", label: "Asset Name", width: "220px" },
+  { key: "category", label: "Category", width: "160px" },
+  { key: "subcategory", label: "Sub Category", width: "180px" },
+  { key: "vendor", label: "Vendor", width: "180px" },
+  { key: "purchase_date", label: "Purchase Date", width: "150px" },
+];
+
+// Comprehensive column definitions with width info for all columns (ordered for proper layout)
+const EXCEL_ALL_COLUMNS_WITH_WIDTH: Array<{ key: string; label: string; width: string }> = [
+  { key: "product_name", label: "Asset Name", width: "220px" },
+  { key: "category", label: "Category", width: "160px" },
+  { key: "custom_category", label: "Category (Other)", width: "160px" },
+  { key: "subcategory", label: "Sub Category", width: "180px" },
+  { key: "custom_subcategory", label: "Sub Category (Other)", width: "180px" },
+  { key: "vendor", label: "Vendor", width: "180px" },
+  { key: "purchase_date", label: "Purchase Date", width: "150px" },
+  { key: "price", label: "Purchase Price", width: "140px" },
+  { key: "serial_number", label: "Serial Number", width: "160px" },
+  { key: "model_number", label: "Model Number", width: "160px" },
+  { key: "invoice_number", label: "Invoice Number", width: "160px" },
+  { key: "location", label: "Location", width: "160px" },
+  { key: "assigned_user", label: "Assigned User", width: "160px" },
+  { key: "description", label: "Description", width: "200px" },
+  { key: "notes", label: "Notes", width: "200px" },
+  { key: "warranty_available", label: "Warranty Available", width: "150px" },
+  { key: "warranty_provider", label: "Warranty Provider", width: "160px" },
+  { key: "warranty_type", label: "Warranty Type", width: "140px" },
+  { key: "warranty_start_date", label: "Warranty Start Date", width: "150px" },
+  { key: "warranty_end_date", label: "Warranty End Date", width: "150px" },
+  { key: "warranty_notes", label: "Warranty Notes", width: "200px" },
+  { key: "warranty_reminder_30_days", label: "Warranty Reminder 30 Days", width: "160px" },
+  { key: "warranty_reminder_7_days", label: "Warranty Reminder 7 Days", width: "150px" },
+  { key: "warranty_reminder_on_expiry", label: "Warranty Reminder On Expiry", width: "160px" },
+  { key: "insurance_available", label: "Insurance Available", width: "150px" },
+  { key: "insurance_provider", label: "Insurance Provider", width: "160px" },
+  { key: "insurance_policy_number", label: "Policy Number", width: "160px" },
+  { key: "insurance_start_date", label: "Insurance Start Date", width: "150px" },
+  { key: "insurance_expiry_date", label: "Insurance Expiry Date", width: "150px" },
+  { key: "insurance_premium_amount", label: "Insurance Premium Amount", width: "150px" },
+  { key: "insurance_coverage_notes", label: "Insurance Notes", width: "200px" },
+  { key: "insurance_reminder_45_days", label: "Insurance Reminder 45 Days", width: "160px" },
+  { key: "insurance_reminder_15_days", label: "Insurance Reminder 15 Days", width: "160px" },
+  { key: "service_required", label: "Service Required", width: "140px" },
+  { key: "service_frequency", label: "Service Frequency", width: "150px" },
+  { key: "service_custom_interval_days", label: "Service Interval (Days)", width: "150px" },
+  { key: "service_reminder_enabled", label: "Enable Next Service Reminder", width: "160px" },
 ];
 
 const AddAsset = () => {
@@ -118,16 +219,26 @@ const AddAsset = () => {
   const [excelUploadLoading, setExcelUploadLoading] = useState(false);
   const [excelTemplateLoading, setExcelTemplateLoading] = useState(false);
   const [excelSearch, setExcelSearch] = useState("");
-  const [excelPage, setExcelPage] = useState(1);
-  const excelPageSize = 8;
+  const [selectedExcelRowIds, setSelectedExcelRowIds] = useState<string[]>([]);
+  const [excelBulkAddLoading, setExcelBulkAddLoading] = useState(false);
+  const [excelRowEditId, setExcelRowEditId] = useState<string | null>(null);
+  const [excelRowAddLoading, setExcelRowAddLoading] = useState<Record<string, boolean>>({});
+  const [excelCategoryMap, setExcelCategoryMap] = useState<Record<string, Set<string>>>({});
+  const [addAllConfirmOpen, setAddAllConfirmOpen] = useState(false);
   const [manualAddAnotherPromptOpen, setManualAddAnotherPromptOpen] = useState(false);
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
 
   const setActionLoading = (action: string, isLoading: boolean) => {
     setLoadingActions((prev) => ({ ...prev, [action]: isLoading }));
   };
+
+  const setExcelRowAddItemLoading = (rowId: string, isLoading: boolean) => {
+    setExcelRowAddLoading((prev) => ({ ...prev, [rowId]: isLoading }));
+  };
+
+  const isExcelRowAddItemLoading = (rowId: string) => Boolean(excelRowAddLoading[rowId]);
 
   const buildManualSuggestion = (): AssetSuggestion => {
     const now = new Date().toISOString();
@@ -180,6 +291,27 @@ const AddAsset = () => {
     setMailboxEmail(status.email_address ?? "");
   };
 
+  const loadExcelCategoryMap = async () => {
+    try {
+      const categories = await getAssetCategories();
+      const nextMap: Record<string, Set<string>> = {};
+      categories.forEach((item) => {
+        const category = String(item.category || "").trim();
+        if (!category) {
+          return;
+        }
+        nextMap[category.toLowerCase()] = new Set(
+          (item.subcategories || [])
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter(Boolean)
+        );
+      });
+      setExcelCategoryMap(nextMap);
+    } catch {
+      setExcelCategoryMap({});
+    }
+  };
+
   useEffect(() => {
     const run = async () => {
       try {
@@ -194,6 +326,10 @@ const AddAsset = () => {
     };
 
     void run();
+  }, []);
+
+  useEffect(() => {
+    void loadExcelCategoryMap();
   }, []);
 
   useEffect(() => {
@@ -257,8 +393,8 @@ const AddAsset = () => {
     if (selectedMethod !== "excel_upload") {
       return;
     }
-    setExcelPage(1);
-  }, [excelSearch, selectedMethod]);
+    setSelectedExcelRowIds([]);
+  }, [selectedMethod]);
 
   const handleConnectMailbox = async (emailOverride?: string) => {
     setActionLoading("connectMailbox", true);
@@ -369,6 +505,10 @@ const AddAsset = () => {
       const senderEmails = parseCsvInput(senderEmailsInput);
 
       const response = await syncMailboxEmails(effectiveScanDays, 200, subjectKeywords, senderEmails, excludeServiceReceipts);
+      if (process.env.NODE_ENV !== "production") {
+        console.log("Email Scan Full Response:", response);
+        console.log("Parsed Suggestions:", response?.suggestions);
+      }
 
       window.clearInterval(stepTimer);
       setActivityStepStates(SYNC_ACTIVITY_STEPS.map(() => "completed"));
@@ -726,48 +866,69 @@ const AddAsset = () => {
     }
   };
 
-  const handlePrepareExcelSave = async (suggestion: AssetSuggestion) => {
+  const handleOpenExcelEdit = async (suggestion: AssetSuggestion) => {
     setError("");
     setParsingMessage("");
     setSelectedAssetId(null);
     setUploadedDocuments([]);
+    setExcelRowEditId(suggestion.id);
     setSelectedSuggestion(suggestion);
   };
 
-  const handleExportExcelSuggestions = () => {
-    const rows = (excelUploadResult?.suggestions || []).filter((item) => {
-      const query = excelSearch.trim().toLowerCase();
-      if (!query) {
-        return true;
-      }
-      return [
-        item.product_name,
-        item.vendor,
-        item.brand,
-        item.category,
-        item.subcategory,
-        item.status,
-      ]
-        .map((value) => String(value || "").toLowerCase())
-        .some((value) => value.includes(query));
-    });
+  const handleAddExcelRowDirect = async (suggestion: AssetSuggestion) => {
+    if (!isExcelRowValid(suggestion)) {
+      setError("Please fix errors before adding");
+      return;
+    }
 
-    const header = ["Product Name", "Vendor", "Price", "Purchase Date", "Category", "Subcategory", "Status"];
-    const data = rows.map((item) => [
-      item.product_name || "",
-      item.vendor || "",
-      item.price ?? "",
-      item.purchase_date || "",
-      item.category || "",
-      item.subcategory || "",
-      item.already_added ? "Added" : item.status || "New",
-    ]);
+    const rowId = suggestion.id;
+    try {
+      setExcelRowAddItemLoading(rowId, true);
+      setError("");
+      const createdAsset = await createAsset({
+        name: suggestion.product_name,
+        brand: suggestion.brand,
+        category: suggestion.category || "Other",
+        subcategory: suggestion.subcategory || "Custom Asset",
+        vendor: suggestion.vendor,
+        purchase_date: suggestion.purchase_date,
+        price: suggestion.price,
+        serial_number: suggestion.serial_number,
+        model_number: suggestion.model_number,
+        invoice_number: suggestion.invoice_number,
+        description: suggestion.description,
+        notes: suggestion.notes,
+        location: suggestion.location,
+        assigned_user: suggestion.assigned_user,
+        lifecycle_info: getLifecyclePayloadFromExcelSuggestion(suggestion),
+        source: "excel",
+      });
 
-    const csv = [header, ...data]
-      .map((line) => line.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
+      setExcelUploadResult((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          suggestions: prev.suggestions.map((item) => (
+            item.id === rowId
+              ? {
+                  ...item,
+                  already_added: true,
+                  status: "added",
+                  asset_id: createdAsset.id,
+                }
+              : item
+          )),
+        };
+      });
 
-    openBlobForDownload(new Blob([csv], { type: "text/csv;charset=utf-8" }), "excel_asset_preview.csv");
+      setMessage("Asset added successfully");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to add asset");
+    } finally {
+      setExcelRowAddItemLoading(rowId, false);
+    }
   };
 
   const handleExcelUpload = async () => {
@@ -781,10 +942,16 @@ const AddAsset = () => {
       setMessage("");
       const response = await uploadAssetExcelFile(excelFile);
       setExcelUploadResult(response);
-      setExcelPage(1);
+      setSelectedExcelRowIds([]);
       setSuggestions([]);
       setSelectedSuggestion(null);
-      setMessage(`Excel parsed successfully. ${response.parsed_rows} row(s) ready.`);
+
+      const readyCount = response.valid ?? response.parsed_rows ?? 0;
+      const invalidCount = response.invalid ?? 0;
+      setMessage(`${readyCount} assets ready to add`);
+      if (invalidCount > 0) {
+        setError(`${invalidCount} rows have errors`);
+      }
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Failed to upload Excel file");
     } finally {
@@ -806,24 +973,480 @@ const AddAsset = () => {
         item.category,
         item.subcategory,
         item.status,
+        ...(item.validation_errors || []),
       ]
         .map((value) => String(value || "").toLowerCase())
         .some((value) => value.includes(query));
     });
   }, [excelSearch, excelUploadResult?.suggestions]);
 
-  const excelPageCount = Math.max(1, Math.ceil(filteredExcelSuggestions.length / excelPageSize));
+  const isExcelRowValid = (item: AssetSuggestion) => {
+    return String(item.validation_status || "valid").toLowerCase() === "valid";
+  };
 
-  useEffect(() => {
-    if (excelPage > excelPageCount) {
-      setExcelPage(excelPageCount);
+  const getExcelRowErrors = (item: AssetSuggestion) => {
+    return Array.isArray(item.validation_errors) ? item.validation_errors : [];
+  };
+
+  const isValidDateInput = (value: unknown): boolean => {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return true;
     }
-  }, [excelPage, excelPageCount]);
+    const parsed = new Date(raw);
+    return !Number.isNaN(parsed.getTime());
+  };
 
-  const pagedExcelSuggestions = useMemo(() => {
-    const startIndex = (excelPage - 1) * excelPageSize;
-    return filteredExcelSuggestions.slice(startIndex, startIndex + excelPageSize);
-  }, [excelPage, filteredExcelSuggestions]);
+  const validateExcelSuggestion = (item: AssetSuggestion): string[] => {
+    const errors: string[] = [];
+    const name = String(item.product_name || "").trim();
+    const category = String(item.category || "").trim();
+    const subcategory = String(item.subcategory || "").trim();
+    const categoryKey = category.toLowerCase();
+
+    if (!name) {
+      errors.push("Asset Name is required");
+    }
+
+    if (!category) {
+      errors.push("Category is required");
+    } else if (Object.keys(excelCategoryMap).length > 0 && !excelCategoryMap[categoryKey]) {
+      errors.push("Invalid category");
+    }
+
+    if (!subcategory) {
+      errors.push("SubCategory is required");
+    } else if (Object.keys(excelCategoryMap).length > 0) {
+      const allowedSubcategories = excelCategoryMap[categoryKey];
+      if (allowedSubcategories && !allowedSubcategories.has(subcategory.toLowerCase())) {
+        errors.push("Invalid subcategory for selected category");
+      }
+    }
+
+    if (!isValidDateInput(item.purchase_date)) {
+      errors.push("Purchase Date must be a valid date");
+    }
+
+    if (item.price !== undefined && item.price !== null && Number.isNaN(Number(item.price))) {
+      errors.push("Purchase Price must be numeric");
+    }
+
+    const warranty = getExcelNestedRecord(item.warranty_details);
+    if (!isValidDateInput(warranty?.start_date)) {
+      errors.push("Warranty Start Date must be a valid date");
+    }
+    if (!isValidDateInput(warranty?.end_date)) {
+      errors.push("Warranty End Date must be a valid date");
+    }
+
+    return errors;
+  };
+
+  const getExcelRowStatusMeta = (item: AssetSuggestion) => {
+    const status = String(item.status || "").toLowerCase();
+    if (status === "rejected" || status === "skipped" || status === "invalid") {
+      return { label: "Skipped", color: "warning.main" as const };
+    }
+    if (item.already_added || status === "added" || status === "duplicate" || status === "confirmed") {
+      return { label: "Already Added", color: "success.main" as const };
+    }
+    return { label: "New", color: "primary.main" as const };
+  };
+
+  const isExcelRowBlocked = (item: AssetSuggestion) => {
+    const status = String(item.status || "").toLowerCase();
+    return !isExcelRowValid(item) || item.already_added || status === "added" || status === "duplicate" || status === "confirmed";
+  };
+
+  const toLifecycleDetailsFromPayload = (payload?: AssetLifecyclePayload): Pick<AssetSuggestion, "warranty_details" | "insurance_details" | "service_details"> => {
+    return {
+      warranty_details: payload?.warranty
+        ? {
+            ...payload.warranty,
+            reminders: {
+              thirty_days_before: payload.warranty.reminders?.thirty_days_before ?? true,
+              seven_days_before: payload.warranty.reminders?.seven_days_before ?? true,
+              on_expiry: payload.warranty.reminders?.on_expiry ?? true,
+            },
+          }
+        : null,
+      insurance_details: payload?.insurance
+        ? {
+            ...payload.insurance,
+            reminders: {
+              forty_five_days_before: payload.insurance.reminders?.forty_five_days_before ?? true,
+              fifteen_days_before: payload.insurance.reminders?.fifteen_days_before ?? true,
+            },
+          }
+        : null,
+      service_details: payload?.service
+        ? {
+            ...payload.service,
+          }
+        : null,
+    };
+  };
+
+  const getExcelNestedRecord = (value: unknown): Record<string, unknown> | null => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return null;
+  };
+
+  const getExcelBooleanText = (value: unknown): string => {
+    if (typeof value === "boolean") {
+      return value ? "Yes" : "No";
+    }
+    if (typeof value === "number") {
+      return value !== 0 ? "Yes" : "No";
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["yes", "y", "true", "1", "on"].includes(normalized)) {
+        return "Yes";
+      }
+      if (["no", "n", "false", "0", "off"].includes(normalized)) {
+        return "No";
+      }
+    }
+    return "";
+  };
+
+  const getExcelNumberValue = (value: unknown): number | undefined => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const numeric = Number(value.trim());
+      if (!Number.isNaN(numeric)) {
+        return numeric;
+      }
+    }
+    return undefined;
+  };
+
+  const getExcelDateText = (value: unknown): string => {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return "";
+    }
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) {
+      return raw;
+    }
+    return date.toLocaleDateString();
+  };
+
+  const getExcelCellValue = (item: AssetSuggestion, key: string): string => {
+    const warranty = getExcelNestedRecord(item.warranty_details);
+    const warrantyReminders = getExcelNestedRecord(warranty?.reminders);
+    const insurance = getExcelNestedRecord(item.insurance_details);
+    const insuranceReminders = getExcelNestedRecord(insurance?.reminders);
+    const service = getExcelNestedRecord(item.service_details);
+
+    switch (key) {
+      case "custom_category":
+      case "custom_subcategory":
+        return "";
+      case "warranty_available":
+        return getExcelBooleanText(warranty?.available);
+      case "warranty_provider":
+        return String(warranty?.provider || "");
+      case "warranty_type":
+        return String(warranty?.type || "");
+      case "warranty_start_date":
+        return getExcelDateText(warranty?.start_date);
+      case "warranty_end_date":
+        return getExcelDateText(warranty?.end_date);
+      case "warranty_notes":
+        return String(warranty?.notes || "");
+      case "warranty_reminder_30_days":
+        return getExcelBooleanText(warrantyReminders?.thirty_days_before);
+      case "warranty_reminder_7_days":
+        return getExcelBooleanText(warrantyReminders?.seven_days_before);
+      case "warranty_reminder_on_expiry":
+        return getExcelBooleanText(warrantyReminders?.on_expiry);
+      case "insurance_available":
+        return getExcelBooleanText(insurance?.available);
+      case "insurance_provider":
+        return String(insurance?.provider || "");
+      case "insurance_policy_number":
+        return String(insurance?.policy_number || "");
+      case "insurance_start_date":
+        return getExcelDateText(insurance?.start_date);
+      case "insurance_expiry_date":
+        return getExcelDateText(insurance?.expiry_date);
+      case "insurance_premium_amount": {
+        const premium = getExcelNumberValue(insurance?.premium_amount);
+        return premium === undefined ? "" : String(premium);
+      }
+      case "insurance_coverage_notes":
+        return String(insurance?.coverage_notes || insurance?.notes || "");
+      case "insurance_reminder_45_days":
+        return getExcelBooleanText(insuranceReminders?.forty_five_days_before);
+      case "insurance_reminder_15_days":
+        return getExcelBooleanText(insuranceReminders?.fifteen_days_before);
+      case "service_required":
+        return getExcelBooleanText(service?.required);
+      case "service_frequency":
+        return String(service?.frequency || "");
+      case "service_custom_interval_days": {
+        const interval = getExcelNumberValue(service?.custom_interval_days);
+        return interval === undefined ? "" : String(interval);
+      }
+      case "service_reminder_enabled":
+        return getExcelBooleanText(service?.reminder_enabled);
+      case "purchase_date":
+        return getExcelDateText(item.purchase_date);
+      case "price":
+        return item.price === undefined || item.price === null ? "" : String(item.price);
+      default:
+        return String((item as unknown as Record<string, unknown>)[key] || "");
+    }
+  };
+
+  const getLifecyclePayloadFromExcelSuggestion = (item: AssetSuggestion): AssetLifecyclePayload => {
+    const warranty = getExcelNestedRecord(item.warranty_details);
+    const warrantyReminders = getExcelNestedRecord(warranty?.reminders);
+    const insurance = getExcelNestedRecord(item.insurance_details);
+    const insuranceReminders = getExcelNestedRecord(insurance?.reminders);
+    const service = getExcelNestedRecord(item.service_details);
+
+    return {
+      warranty: {
+        available: getExcelBooleanText(warranty?.available) === "Yes",
+        provider: String(warranty?.provider || "") || undefined,
+        type: String(warranty?.type || "") || undefined,
+        start_date: String(warranty?.start_date || "") || undefined,
+        end_date: String(warranty?.end_date || "") || undefined,
+        notes: String(warranty?.notes || "") || undefined,
+        reminders: {
+          thirty_days_before: getExcelBooleanText(warrantyReminders?.thirty_days_before) === "Yes",
+          seven_days_before: getExcelBooleanText(warrantyReminders?.seven_days_before) === "Yes",
+          on_expiry: getExcelBooleanText(warrantyReminders?.on_expiry) === "Yes",
+        },
+      },
+      insurance: {
+        available: getExcelBooleanText(insurance?.available) === "Yes",
+        provider: String(insurance?.provider || "") || undefined,
+        policy_number: String(insurance?.policy_number || "") || undefined,
+        start_date: String(insurance?.start_date || "") || undefined,
+        expiry_date: String(insurance?.expiry_date || "") || undefined,
+        premium_amount: getExcelNumberValue(insurance?.premium_amount),
+        coverage_notes: String(insurance?.coverage_notes || insurance?.notes || "") || undefined,
+        reminders: {
+          forty_five_days_before: getExcelBooleanText(insuranceReminders?.forty_five_days_before) === "Yes",
+          fifteen_days_before: getExcelBooleanText(insuranceReminders?.fifteen_days_before) === "Yes",
+        },
+      },
+      service: {
+        required: getExcelBooleanText(service?.required) === "Yes",
+        frequency: String(service?.frequency || "") || undefined,
+        custom_interval_days: getExcelNumberValue(service?.custom_interval_days),
+        reminder_enabled: getExcelBooleanText(service?.reminder_enabled) === "Yes",
+      },
+    };
+  };
+
+  const toggleExcelRowSelection = (rowId: string) => {
+    setSelectedExcelRowIds((prev) => (
+      prev.includes(rowId)
+        ? prev.filter((id) => id !== rowId)
+        : [...prev, rowId]
+    ));
+  };
+
+  const handleAddAllExcelAssets = async () => {
+    if (!excelUploadResult) {
+      return;
+    }
+
+    const selectedRows = selectedExcelRowIds.length
+      ? excelUploadResult.suggestions.filter((item) => selectedExcelRowIds.includes(item.id))
+      : excelUploadResult.suggestions;
+
+    const invalidRows = selectedRows.filter((item) => !isExcelRowValid(item));
+    const addableRows = selectedRows.filter((item) => isExcelRowValid(item) && !isExcelRowBlocked(item));
+    if (!addableRows.length) {
+      setError("No valid rows available to add.");
+      return;
+    }
+
+    try {
+      setExcelBulkAddLoading(true);
+      setError("");
+      let addedCount = 0;
+      const failedRows: Array<{ row: string; reason: string }> = [];
+      const createdAssetBySuggestionId: Record<string, string> = {};
+
+      for (const item of addableRows) {
+        try {
+          const created = await createAsset({
+            name: item.product_name,
+            brand: item.brand,
+            category: item.category || "Other",
+            subcategory: item.subcategory || "Custom Asset",
+            vendor: item.vendor,
+            purchase_date: item.purchase_date,
+            price: item.price,
+            serial_number: item.serial_number,
+            model_number: item.model_number,
+            invoice_number: item.invoice_number,
+            description: item.description,
+            notes: item.notes,
+            location: item.location,
+            assigned_user: item.assigned_user,
+            lifecycle_info: getLifecyclePayloadFromExcelSuggestion(item),
+            source: "excel",
+          });
+          createdAssetBySuggestionId[item.id] = created.id;
+          addedCount += 1;
+        } catch (requestError: unknown) {
+          failedRows.push({
+            row: item.product_name || item.id,
+            reason: requestError instanceof Error ? requestError.message : "Failed to add row",
+          });
+        }
+      }
+
+      setExcelUploadResult((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          suggestions: prev.suggestions.map((item) => {
+            const createdAssetId = createdAssetBySuggestionId[item.id];
+            if (!createdAssetId) {
+              return item;
+            }
+            return {
+              ...item,
+              already_added: true,
+              status: "added",
+              asset_id: createdAssetId,
+            };
+          }),
+        };
+      });
+
+      setSelectedExcelRowIds((prev) => prev.filter((id) => !Object.prototype.hasOwnProperty.call(createdAssetBySuggestionId, id)));
+
+      if (addedCount > 0) {
+        setMessage(`${addedCount} assets added successfully`);
+      }
+      if (invalidRows.length > 0) {
+        setError(`${invalidRows.length} rows skipped due to errors`);
+      }
+      if (failedRows.length > 0) {
+        const firstError = failedRows[0];
+        setError(`${failedRows.length} row(s) failed. Example: ${firstError.row} - ${firstError.reason}`);
+      }
+      if (addedCount === 0 && failedRows.length > 0) {
+        setError(`Failed to add assets. Example: ${failedRows[0].row} - ${failedRows[0].reason}`);
+      }
+    } finally {
+      setExcelBulkAddLoading(false);
+    }
+  };
+
+  const handleConfirmAddAllAssets = async () => {
+    setAddAllConfirmOpen(false);
+    await handleAddAllExcelAssets();
+  };
+
+  const handleExcelModalSave = async (payload: {
+    product_name?: string;
+    brand?: string;
+    vendor?: string;
+    price?: number;
+    purchase_date?: string;
+    category?: string;
+    subcategory?: string;
+    serial_number?: string;
+    model_number?: string;
+    invoice_number?: string;
+    description?: string;
+    notes?: string;
+    location?: string;
+    assigned_user?: string;
+    lifecycle_info?: AssetLifecyclePayload;
+    supporting_documents?: File[];
+  }) => {
+    const sourceType = String(selectedSuggestion?.source || "").toLowerCase();
+    const isExcelEditMode = sourceType === "excel" && Boolean(excelRowEditId);
+
+    if (!isExcelEditMode || !selectedSuggestion) {
+      await handleSaveAsset(payload);
+      return;
+    }
+
+    const updatedSuggestion: AssetSuggestion = {
+      ...selectedSuggestion,
+      product_name: payload.product_name ?? selectedSuggestion.product_name,
+      brand: payload.brand ?? selectedSuggestion.brand,
+      vendor: payload.vendor ?? selectedSuggestion.vendor,
+      price: payload.price ?? selectedSuggestion.price,
+      purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
+      category: payload.category ?? selectedSuggestion.category,
+      subcategory: payload.subcategory ?? selectedSuggestion.subcategory,
+      serial_number: payload.serial_number ?? selectedSuggestion.serial_number,
+      model_number: payload.model_number ?? selectedSuggestion.model_number,
+      invoice_number: payload.invoice_number ?? selectedSuggestion.invoice_number,
+      description: payload.description ?? selectedSuggestion.description,
+      notes: payload.notes ?? selectedSuggestion.notes,
+      location: payload.location ?? selectedSuggestion.location,
+      assigned_user: payload.assigned_user ?? selectedSuggestion.assigned_user,
+      ...toLifecycleDetailsFromPayload(payload.lifecycle_info),
+    };
+
+    const validationErrors = validateExcelSuggestion(updatedSuggestion);
+    const isValid = validationErrors.length === 0;
+    const normalizedSuggestion: AssetSuggestion = {
+      ...updatedSuggestion,
+      validation_status: isValid ? "valid" : "invalid",
+      validation_errors: validationErrors,
+      status: isValid ? "new" : "invalid",
+    };
+
+    setExcelUploadResult((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const nextSuggestions = prev.suggestions.map((item) => (
+        item.id === selectedSuggestion.id ? normalizedSuggestion : item
+      ));
+      const valid = nextSuggestions.filter((item) => isExcelRowValid(item)).length;
+      const invalid = nextSuggestions.length - valid;
+      const data = nextSuggestions.map((item) => ({
+        row: item.row_number || Number(String(item.id).replace("excel-row-", "")) || 0,
+        status: (String(item.validation_status || "valid").toLowerCase() === "valid" ? "valid" : "invalid") as "valid" | "invalid",
+        errors: getExcelRowErrors(item),
+      }));
+
+      return {
+        ...prev,
+        parsed_rows: valid,
+        valid,
+        invalid,
+        data,
+        suggestions: nextSuggestions,
+      };
+    });
+
+    setSelectedSuggestion(null);
+    setExcelRowEditId(null);
+    setSelectedAssetId(null);
+    setUploadedDocuments([]);
+    setParsingMessage("");
+    if (isValid) {
+      setMessage("Row updated and ready to add");
+    } else {
+      setError("Please fix errors before adding");
+    }
+  };
 
   const standardControlHeight = 36;
   const standardFieldSx = {
@@ -1188,11 +1811,11 @@ const AddAsset = () => {
 
                       {suggestions.length > 0 ? (
                         <Paper variant="outlined" sx={{ height: 420, overflowY: "auto", overflowX: "auto" }}>
-                          <Box sx={{ minWidth: 920 }}>
+                          <Box sx={{ minWidth: 860 }}>
                             <Box
                               sx={{
                                 display: "grid",
-                                gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1.2fr 1.2fr",
+                                gridTemplateColumns: "1.6fr 2.8fr 1.4fr 1fr 1.1fr",
                                 columnGap: 2,
                                 px: 2,
                                 py: 1.25,
@@ -1204,10 +1827,9 @@ const AddAsset = () => {
                                 zIndex: 1,
                               }}
                             >
-                              <Typography variant="subtitle2">Product Name</Typography>
-                              <Typography variant="subtitle2">Vendor</Typography>
-                              <Typography variant="subtitle2">Price</Typography>
-                              <Typography variant="subtitle2">Purchase Date</Typography>
+                              <Typography variant="subtitle2">Sender</Typography>
+                              <Typography variant="subtitle2">Subject</Typography>
+                              <Typography variant="subtitle2">Email Date</Typography>
                               <Typography variant="subtitle2">Status</Typography>
                               <Typography variant="subtitle2">Action</Typography>
                             </Box>
@@ -1222,7 +1844,7 @@ const AddAsset = () => {
                                   key={suggestion.id}
                                   sx={{
                                     display: "grid",
-                                    gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1.2fr 1.2fr",
+                                    gridTemplateColumns: "1.6fr 2.8fr 1.4fr 1fr 1.1fr",
                                     columnGap: 2,
                                     alignItems: "center",
                                     px: 2,
@@ -1231,50 +1853,88 @@ const AddAsset = () => {
                                     borderColor: "divider",
                                   }}
                                 >
-                                  <Typography variant="body2">{suggestion.product_name || "-"}</Typography>
-                                  <Typography variant="body2">{suggestion.vendor || suggestion.sender || "-"}</Typography>
-                                  <Typography variant="body2">{formatSuggestionPrice(suggestion)}</Typography>
-                                  <Typography variant="body2">
-                                    {suggestion.purchase_date ? new Date(suggestion.purchase_date).toLocaleDateString() : "-"}
+                                  <Tooltip title={suggestion.sender || "-"} arrow>
+                                    <Typography variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      {suggestion.sender || "-"}
+                                    </Typography>
+                                  </Tooltip>
+                                  <Tooltip title={suggestion.subject || "-"} arrow>
+                                    <Typography variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      {suggestion.subject || "-"}
+                                    </Typography>
+                                  </Tooltip>
+                                  <Tooltip title={(suggestion.received_date || suggestion.email_date || "-") as string} arrow>
+                                    <Typography variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      {suggestion.received_date || suggestion.email_date
+                                        ? new Date(suggestion.received_date || suggestion.email_date || "").toLocaleString()
+                                        : "-"}
+                                    </Typography>
+                                  </Tooltip>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      color: suggestion.already_added
+                                        ? "success.main"
+                                        : isSkipped
+                                          ? "warning.main"
+                                          : "primary.main",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {suggestion.already_added ? "Already Added" : isSkipped ? "Skipped" : "New"}
                                   </Typography>
-                                  <Chip
-                                    size="small"
-                                    label={suggestion.already_added ? "Added" : isSkipped ? "Skipped" : "New"}
-                                    color={suggestion.already_added ? "success" : isSkipped ? "default" : "primary"}
-                                    variant={suggestion.already_added || isSkipped ? "filled" : "outlined"}
-                                  />
-                                  <Stack direction="row" spacing={1}>
-                                    <Button
-                                      variant="outlined"
-                                      onClick={() => {
-                                        void handlePrepareSave(suggestion);
-                                      }}
-                                      disabled={suggestion.already_added || isSkipped || parsingSuggestionId === suggestion.id}
-                                      sx={{
-                                        height: standardControlHeight,
-                                        minWidth: 82,
-                                        px: 1.25,
-                                        fontSize: "0.875rem",
-                                      }}
-                                    >
-                                      {suggestion.already_added ? "Added" : parsingSuggestionId === suggestion.id ? "Parsing..." : "Add"}
-                                    </Button>
-                                    <Button
-                                      variant="text"
-                                      color="warning"
-                                      onClick={() => {
-                                        void handleSkipSuggestion(suggestion);
-                                      }}
-                                      disabled={suggestion.already_added || isSkipped || skipLoading}
-                                      sx={{
-                                        height: standardControlHeight,
-                                        minWidth: 72,
-                                        px: 1,
-                                        fontSize: "0.85rem",
-                                      }}
-                                    >
-                                      {skipLoading ? "Skipping..." : "Skip"}
-                                    </Button>
+                                  <Stack direction="row" spacing={0.5} alignItems="center">
+                                    {!suggestion.already_added && !isSkipped ? (
+                                      <>
+                                        <Tooltip title="Add Asset" arrow>
+                                          <span>
+                                            <IconButton
+                                              aria-label="Add Asset"
+                                              color="primary"
+                                              onClick={() => {
+                                                void handlePrepareSave(suggestion);
+                                              }}
+                                              disabled={parsingSuggestionId === suggestion.id}
+                                              size="small"
+                                              sx={{
+                                                p: 1,
+                                                transition: "transform 0.2s ease, background-color 0.2s ease",
+                                                "&:hover": {
+                                                  transform: "scale(1.08)",
+                                                },
+                                              }}
+                                            >
+                                              {parsingSuggestionId === suggestion.id ? <CircularProgress size={18} /> : <AddIcon fontSize="small" />}
+                                            </IconButton>
+                                          </span>
+                                        </Tooltip>
+                                        <Tooltip title="Skip" arrow>
+                                          <span>
+                                            <IconButton
+                                              aria-label="Skip"
+                                              onClick={() => {
+                                                void handleSkipSuggestion(suggestion);
+                                              }}
+                                              disabled={skipLoading}
+                                              size="small"
+                                              sx={{
+                                                p: 1,
+                                                color: "warning.main",
+                                                transition: "transform 0.2s ease, background-color 0.2s ease",
+                                                "&:hover": {
+                                                  transform: "scale(1.08)",
+                                                  bgcolor: "warning.light",
+                                                },
+                                              }}
+                                            >
+                                              {skipLoading ? <CircularProgress size={18} color="warning" /> : <CloseIcon fontSize="small" />}
+                                            </IconButton>
+                                          </span>
+                                        </Tooltip>
+                                      </>
+                                    ) : (
+                                      <Typography variant="body2" color="text.secondary">-</Typography>
+                                    )}
                                   </Stack>
                                 </Box>
                               );
@@ -1350,8 +2010,9 @@ const AddAsset = () => {
 
                       {excelUploadResult ? (
                         <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-                          <Chip label={`Total Rows: ${excelUploadResult.total_rows}`} size="small" variant="outlined" />
-                          <Chip label={`Parsed: ${excelUploadResult.parsed_rows}`} size="small" color="primary" variant="outlined" />
+                          <Chip label={`Total Rows: ${excelUploadResult.total ?? excelUploadResult.total_rows}`} size="small" variant="outlined" />
+                          <Chip label={`Valid: ${excelUploadResult.valid ?? excelUploadResult.parsed_rows}`} size="small" color="primary" variant="outlined" />
+                          <Chip label={`Invalid: ${excelUploadResult.invalid ?? 0}`} size="small" color={(excelUploadResult.invalid ?? 0) > 0 ? "warning" : "default"} variant="outlined" />
                           <Chip label={`Skipped: ${excelUploadResult.skipped_rows.length}`} size="small" variant="outlined" />
                         </Stack>
                       ) : null}
@@ -1369,14 +2030,19 @@ const AddAsset = () => {
                       <Stack spacing={1.5}>
                         <Box sx={{ display: "flex", alignItems: { xs: "stretch", md: "center" }, justifyContent: "space-between", gap: 1.25, flexWrap: "wrap" }}>
                           <Typography variant="h6">Excel Asset Preview</Typography>
-                          <Stack direction="row" spacing={1}>
+                          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 1 }}>
                             <Button
-                              variant="outlined"
-                              onClick={handleExportExcelSuggestions}
-                              disabled={!excelUploadResult.suggestions.length}
+                              variant="contained"
+                              onClick={() => {
+                                setAddAllConfirmOpen(true);
+                              }}
+                              disabled={
+                                selectedExcelRowIds.length === 0
+                                || excelBulkAddLoading
+                              }
                               sx={{ height: standardControlHeight }}
                             >
-                              Export CSV
+                              {excelBulkAddLoading ? "Adding..." : `Add Selected Assets (${selectedExcelRowIds.length})`}
                             </Button>
                           </Stack>
                         </Box>
@@ -1391,86 +2057,238 @@ const AddAsset = () => {
                         />
 
                         {filteredExcelSuggestions.length > 0 ? (
-                          <>
-                            <Paper variant="outlined" sx={{ maxHeight: 420, overflowY: "auto", overflowX: "auto" }}>
-                              <Box sx={{ minWidth: 980 }}>
+                          <Paper
+                            variant="outlined"
+                            sx={{
+                              maxHeight: 480,
+                              overflow: "auto",
+                              position: "relative",
+                              borderRadius: 1,
+                            }}
+                          >
+                            {(() => {
+                              const selectableVisibleRows = filteredExcelSuggestions.filter((item) => !isExcelRowBlocked(item));
+                              const allVisibleSelected = selectableVisibleRows.length > 0
+                                && selectableVisibleRows.every((item) => selectedExcelRowIds.includes(item.id));
+                              const someVisibleSelected = selectableVisibleRows.some((item) => selectedExcelRowIds.includes(item.id));
+                              return (
                                 <Box
                                   sx={{
-                                    display: "grid",
-                                    gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1fr 1fr 1.1fr",
-                                    columnGap: 2,
-                                    px: 2,
-                                    py: 1.25,
-                                    bgcolor: "grey.100",
-                                    borderBottom: 1,
-                                    borderColor: "divider",
-                                    position: "sticky",
-                                    top: 0,
-                                    zIndex: 1,
-                                  }}
-                                >
-                                  <Typography variant="subtitle2">Product Name</Typography>
-                                  <Typography variant="subtitle2">Vendor</Typography>
-                                  <Typography variant="subtitle2">Price</Typography>
-                                  <Typography variant="subtitle2">Purchase Date</Typography>
-                                  <Typography variant="subtitle2">Category</Typography>
-                                  <Typography variant="subtitle2">Status</Typography>
-                                  <Typography variant="subtitle2">Action</Typography>
-                                </Box>
-
-                                {pagedExcelSuggestions.map((item) => {
-                                  const blocked = item.already_added || String(item.status || "").toLowerCase() === "duplicate";
-                                  return (
-                                    <Box
-                                      key={item.id}
+                                      display: "grid",
+                                      gridTemplateColumns: `76px ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" ")} ${FROZEN_COLUMN_WIDTHS.error}px ${FROZEN_COLUMN_WIDTHS.status}px ${FROZEN_COLUMN_WIDTHS.actions}px`,
+                                      columnGap: 0,
+                                      px: 2,
+                                      py: 1.25,
+                                      bgcolor: "grey.100",
+                                      borderBottom: 1,
+                                      borderColor: "divider",
+                                      position: "sticky",
+                                      top: 0,
+                                      zIndex: 30,
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                      <Checkbox
+                                        size="small"
+                                        checked={allVisibleSelected}
+                                        indeterminate={!allVisibleSelected && someVisibleSelected}
+                                        onChange={(event) => {
+                                          const checked = event.target.checked;
+                                          setSelectedExcelRowIds((prev) => {
+                                            const pool = new Set(prev);
+                                            for (const row of selectableVisibleRows) {
+                                              if (checked) {
+                                                pool.add(row.id);
+                                              } else {
+                                                pool.delete(row.id);
+                                              }
+                                            }
+                                            return Array.from(pool);
+                                          });
+                                        }}
+                                        disabled={!selectableVisibleRows.length}
+                                      />
+                                    </Box>
+                                    {EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => (
+                                      <Typography key={column.key} variant="subtitle2" noWrap sx={{ px: 1 }}>
+                                        {column.label}
+                                      </Typography>
+                                    ))}
+                                    <Typography
+                                      variant="subtitle2"
                                       sx={{
-                                        display: "grid",
-                                        gridTemplateColumns: "2fr 1.4fr 1fr 1.2fr 1fr 1fr 1.1fr",
-                                        columnGap: 2,
-                                        alignItems: "center",
-                                        px: 2,
-                                        py: 1.1,
-                                        borderBottom: 1,
-                                        borderColor: "divider",
+                                        position: "sticky",
+                                        right: FROZEN_COLUMN_WIDTHS.status + FROZEN_COLUMN_WIDTHS.actions,
+                                        zIndex: 40,
+                                        bgcolor: "grey.100",
+                                        px: 1,
+                                        textAlign: "left",
                                       }}
                                     >
-                                      <Typography variant="body2">{item.product_name || "-"}</Typography>
-                                      <Typography variant="body2">{item.vendor || "-"}</Typography>
-                                      <Typography variant="body2">{formatSuggestionPrice(item)}</Typography>
-                                      <Typography variant="body2">{item.purchase_date ? new Date(item.purchase_date).toLocaleDateString() : "-"}</Typography>
-                                      <Typography variant="body2">{item.category || "-"}</Typography>
-                                      <Chip
-                                        size="small"
-                                        label={item.already_added ? "Added" : String(item.status || "").toLowerCase() === "duplicate" ? "Duplicate" : "New"}
-                                        color={item.already_added ? "success" : String(item.status || "").toLowerCase() === "duplicate" ? "default" : "primary"}
-                                        variant={item.already_added || String(item.status || "").toLowerCase() === "duplicate" ? "filled" : "outlined"}
-                                      />
-                                      <Button
-                                        variant="outlined"
-                                        onClick={() => {
-                                          void handlePrepareExcelSave(item);
-                                        }}
-                                        disabled={blocked}
-                                        sx={{ height: standardControlHeight, minWidth: 82, px: 1.25 }}
-                                      >
-                                        {item.already_added ? "Added" : blocked ? "Blocked" : "Add"}
-                                      </Button>
-                                    </Box>
-                                  );
-                                })}
-                              </Box>
-                            </Paper>
+                                      Error
+                                    </Typography>
+                                    <Typography
+                                      variant="subtitle2"
+                                      sx={{
+                                        position: "sticky",
+                                        right: FROZEN_COLUMN_WIDTHS.actions,
+                                        zIndex: 40,
+                                        bgcolor: "grey.100",
+                                        px: 1,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Status
+                                    </Typography>
+                                    <Typography
+                                      variant="subtitle2"
+                                      sx={{
+                                        position: "sticky",
+                                        right: 0,
+                                        zIndex: 40,
+                                        bgcolor: "grey.100",
+                                        px: 1,
+                                        textAlign: "left",
+                                      }}
+                                    >
+                                      Actions
+                                    </Typography>
+                                  </Box>
+                                );
+                              })()}
 
-                            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-                              <Pagination
-                                page={excelPage}
-                                count={excelPageCount}
-                                onChange={(_, page) => setExcelPage(page)}
-                                color="primary"
-                                size="small"
-                              />
-                            </Box>
-                          </>
+                              {filteredExcelSuggestions.map((item) => {
+                                const statusMeta = getExcelRowStatusMeta(item);
+                                const blocked = isExcelRowBlocked(item);
+                                const isSelected = selectedExcelRowIds.includes(item.id);
+                                const rowErrors = getExcelRowErrors(item);
+                                const rowHasValidationError = !isExcelRowValid(item);
+                                return (
+                                  <Box
+                                    key={item.id}
+                                    sx={{
+                                      display: "grid",
+                                      gridTemplateColumns: `76px ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" ")} ${FROZEN_COLUMN_WIDTHS.error}px ${FROZEN_COLUMN_WIDTHS.status}px ${FROZEN_COLUMN_WIDTHS.actions}px`,
+                                      columnGap: 0,
+                                      alignItems: "center",
+                                      px: 2,
+                                      py: 1.1,
+                                      borderBottom: 1,
+                                      borderColor: "divider",
+                                      bgcolor: rowHasValidationError ? "#fdeaea" : "transparent",
+                                    }}
+                                  >
+                                    <Checkbox
+                                      size="small"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        toggleExcelRowSelection(item.id);
+                                      }}
+                                      disabled={blocked}
+                                    />
+                                    {EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => {
+                                      const value = getExcelCellValue(item, column.key);
+                                      return (
+                                        <Tooltip key={`${item.id}-${column.key}`} title={value || "-"} arrow>
+                                          <Typography variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis", px: 1 }}>
+                                            {value || "-"}
+                                          </Typography>
+                                        </Tooltip>
+                                      );
+                                    })}
+                                    <Tooltip title={rowErrors.length ? rowErrors.join("; ") : "-"} arrow>
+                                      <Typography
+                                        variant="body2"
+                                        noWrap
+                                        sx={{
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          color: rowErrors.length ? "error.main" : "text.secondary",
+                                          fontWeight: rowErrors.length ? 500 : 400,
+                                          position: "sticky",
+                                          right: FROZEN_COLUMN_WIDTHS.status + FROZEN_COLUMN_WIDTHS.actions,
+                                          zIndex: 10,
+                                          bgcolor: rowHasValidationError ? "#fdeaea" : "background.paper",
+                                          px: 1,
+                                        }}
+                                      >
+                                        {rowErrors.length ? rowErrors.join(", ") : "-"}
+                                      </Typography>
+                                    </Tooltip>
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        color: statusMeta.color,
+                                        fontWeight: 600,
+                                        position: "sticky",
+                                        right: FROZEN_COLUMN_WIDTHS.actions,
+                                        zIndex: 10,
+                                        bgcolor: rowHasValidationError ? "#fdeaea" : "background.paper",
+                                        px: 1,
+                                      }}
+                                    >
+                                      {statusMeta.label}
+                                    </Typography>
+                                    <Stack
+                                      direction="row"
+                                      spacing={0.25}
+                                      sx={{
+                                        position: "sticky",
+                                        right: 0,
+                                        zIndex: 10,
+                                        bgcolor: rowHasValidationError ? "#fdeaea" : "background.paper",
+                                        px: 1,
+                                      }}
+                                    >
+                                      <Tooltip title="Open edit form" arrow>
+                                        <span>
+                                          <IconButton
+                                            size="small"
+                                            color="primary"
+                                            onClick={() => {
+                                              void handleOpenExcelEdit(item);
+                                            }}
+                                            disabled={item.already_added}
+                                            sx={{
+                                              p: 1,
+                                              transition: "transform 0.2s ease",
+                                              "&:hover": {
+                                                transform: "scale(1.08)",
+                                              },
+                                            }}
+                                          >
+                                            <EditOutlinedIcon fontSize="small" />
+                                          </IconButton>
+                                        </span>
+                                      </Tooltip>
+                                      <Tooltip title="Add asset" arrow>
+                                        <span>
+                                          <IconButton
+                                            size="small"
+                                            color="primary"
+                                            onClick={() => {
+                                              void handleAddExcelRowDirect(item);
+                                            }}
+                                            disabled={item.already_added || isExcelRowAddItemLoading(item.id)}
+                                            sx={{
+                                              p: 1,
+                                              transition: "transform 0.2s ease",
+                                              "&:hover": {
+                                                transform: "scale(1.08)",
+                                              },
+                                            }}
+                                          >
+                                            {isExcelRowAddItemLoading(item.id) ? <CircularProgress size={16} /> : <AddIcon fontSize="small" />}
+                                          </IconButton>
+                                        </span>
+                                      </Tooltip>
+                                    </Stack>
+                                  </Box>
+                                );
+                              })}
+                            })()}
+                          </Paper>
                         ) : (
                           <Typography variant="body2" color="text.secondary">
                             No rows matched your search.
@@ -1567,6 +2385,7 @@ const AddAsset = () => {
       <AssetPreviewModal
         open={Boolean(selectedSuggestion) && String(selectedSuggestion?.source || "").toLowerCase() !== "manual"}
         suggestion={selectedSuggestion}
+        disableAttachmentAndEmailPreview={String(selectedSuggestion?.source || "").toLowerCase() === "excel"}
         parsingMessage={parsingMessage}
         saveLoading={saveLoading}
         uploadedDocuments={uploadedDocuments}
@@ -1584,6 +2403,7 @@ const AddAsset = () => {
             return;
           }
           setSelectedSuggestion(null);
+          setExcelRowEditId(null);
           setSelectedAssetId(null);
           setUploadedDocuments([]);
           setReminderPromptOpen(false);
@@ -1592,8 +2412,23 @@ const AddAsset = () => {
           setNextSuggestionPromptOpen(false);
           setParsingMessage("");
         }}
-        onSave={handleSaveAsset}
+        onSave={handleExcelModalSave}
       />
+
+      <Dialog open={addAllConfirmOpen} onClose={() => setAddAllConfirmOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Confirm Bulk Add</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Are you sure you want to add the {selectedExcelRowIds.length} selected asset{selectedExcelRowIds.length === 1 ? "" : "s"}? Only valid rows will be added.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddAllConfirmOpen(false)} disabled={excelBulkAddLoading}>Cancel</Button>
+          <Button variant="contained" onClick={() => void handleConfirmAddAllAssets()} disabled={excelBulkAddLoading}>
+            {excelBulkAddLoading ? "Adding..." : "Confirm"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={reminderPromptOpen} onClose={() => undefined} fullWidth maxWidth="xs">
         <DialogTitle>Set Reminder Alerts?</DialogTitle>

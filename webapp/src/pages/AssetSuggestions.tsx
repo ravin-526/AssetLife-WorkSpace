@@ -27,7 +27,7 @@ const AssetSuggestions = () => {
   const [message, setMessage] = useState("");
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
 
   const loadSuggestions = useCallback(async () => {
     const response = await getAssetSuggestions();
@@ -198,8 +198,9 @@ const AssetSuggestions = () => {
                   {(() => {
                     const statusLabel = suggestion.already_added ? "Already Added" : "New";
                     return (
-                  <Stack spacing={0.75}>
-                    <Typography variant="body2"><strong>Product Name:</strong> {suggestion.product_name}</Typography>
+                  <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                    <Typography variant="body2"><strong>Product Name:</strong></Typography>
+                    <Typography variant="body2" title={suggestion.product_name} sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", mt: "-4px !important" }}>{suggestion.product_name}</Typography>
                     <Typography variant="body2"><strong>Vendor:</strong> {suggestion.vendor || "-"}</Typography>
                     <Typography variant="body2"><strong>Price:</strong> {suggestion.price ?? "-"}</Typography>
                     <Typography variant="body2"><strong>Purchase Date:</strong> {suggestion.purchase_date ? new Date(suggestion.purchase_date).toLocaleDateString() : "-"}</Typography>

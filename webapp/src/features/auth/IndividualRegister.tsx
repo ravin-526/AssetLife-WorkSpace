@@ -2,6 +2,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import useAutoDismissMessage from "../../hooks/useAutoDismissMessage.ts";
 import api from "../../services/api";
 import useUserStore, { UserData } from "../../store/userStore";
 import theme from "../../styles/theme";
@@ -34,6 +35,8 @@ const IndividualRegister = () => {
   const [errors, setErrors] = useState<RegisterErrors>({});
   const [apiError, setApiError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useAutoDismissMessage(apiError, setApiError, { delay: 5000 });
   const login = useUserStore((state) => state.login);
 
   const containerStyle = useMemo(

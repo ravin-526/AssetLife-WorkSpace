@@ -11,7 +11,7 @@ const AssetView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
 
   useEffect(() => {
     const run = async () => {

@@ -120,7 +120,7 @@ const Assets = () => {
   const [message, setMessage] = useState("");
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
-  useAutoDismissMessage(error, setError, { delay: 4000 });
+  useAutoDismissMessage(error, setError, { delay: 5000 });
 
   const setActionLoading = (action: string, isLoading: boolean) => {
     setLoadingActions((prev) => ({ ...prev, [action]: isLoading }));
@@ -705,12 +705,6 @@ const Assets = () => {
     setExportAnchorEl(null);
   };
 
-  // Route directly to the dedicated Add Asset page so it uses the existing page layout
-  // instead of opening any Add Asset popup/wizard from the Assets screen.
-  const handleAddAssetNavigation = () => {
-    navigate("/assets/add");
-  };
-
   return (
     <Box
       className="grid"
@@ -722,12 +716,8 @@ const Assets = () => {
     >
       <Box className="col-12">
         <div className="grid align-items-center">
-          <div className="col-12 md:col-6">
+          <div className="col-12">
             <Typography variant="h4">Assets</Typography>
-          </div>
-          <div className="col-12 md:col-6 flex md:justify-content-end">
-            {/* Direct page navigation keeps Add Asset UX in AddAsset.tsx and avoids modal flow here. */}
-            <Button variant="contained" onClick={handleAddAssetNavigation}>Add Asset</Button>
           </div>
         </div>
       </Box>
