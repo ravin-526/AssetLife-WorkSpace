@@ -67,6 +67,7 @@ export type AssetSuggestion = {
   quantity: number;
   source: string;
   status: string;
+  asset_status?: string;
   warranty?: string;
   email_message_id: string;
   attachment_filename?: string;
@@ -144,6 +145,7 @@ export type Asset = {
   id: string;
   name: string;
   asset_name?: string | null;
+  status?: string | null;
   vendor?: string | null;
   purchase_date?: string | null;
   price?: number | null;
@@ -231,6 +233,7 @@ export type AssetUpdatePayload = {
   name?: string;
   brand?: string;
   vendor?: string;
+  status?: string;
   purchase_date?: string;
   price?: number;
   category?: string;
@@ -359,6 +362,7 @@ export const getSuggestionEmailDetails = async (suggestionId: string): Promise<S
 export const createAsset = async (payload: {
   name: string;
   brand?: string;
+  status?: string;
   category: string;
   subcategory: string;
   vendor?: string;

@@ -73,6 +73,7 @@ type AssetPreviewModalProps = {
     brand?: string;
     vendor?: string;
     price?: number;
+    status?: string;
     purchase_date?: string;
     category?: string;
     subcategory?: string;
@@ -124,6 +125,7 @@ const AssetPreviewModal = ({
     brand: "",
     vendor: "",
     price: "",
+    status: "Active",
     purchase_date: "",
     category: "",
     subcategory: "",
@@ -391,6 +393,7 @@ const AssetPreviewModal = ({
       brand: suggestion?.brand ?? "",
       vendor: suggestion?.vendor ?? "",
       price: suggestion?.price !== undefined && suggestion?.price !== null ? String(suggestion.price) : "",
+      status: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["asset_status"]) ?? "Active",
       purchase_date: suggestion?.purchase_date ? suggestion.purchase_date.slice(0, 10) : "",
       category: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["category", "asset_category"]) ?? "",
       subcategory: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["subcategory", "sub_category", "asset_subcategory"]) ?? "",
@@ -830,6 +833,7 @@ const AssetPreviewModal = ({
       brand: form.brand || undefined,
       vendor: form.vendor || undefined,
       price: form.price ? Number(form.price) : undefined,
+      status: form.status || undefined,
       purchase_date: form.purchase_date || undefined,
       category: finalCategory || undefined,
       subcategory: finalSubcategory || undefined,
@@ -1162,6 +1166,25 @@ const AssetPreviewModal = ({
                             sx={standardFieldSx}
                             fullWidth
                           />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            size="small"
+                            select
+                            label="Status"
+                            value={form.status}
+                            onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+                            sx={standardFieldSx}
+                            fullWidth
+                          >
+                            {!["Active", "Inactive", "Lost", "Damaged"].includes(form.status) ? (
+                              <MenuItem value={form.status}>{form.status}</MenuItem>
+                            ) : null}
+                            <MenuItem value="Active">Active</MenuItem>
+                            <MenuItem value="Inactive">Inactive</MenuItem>
+                            <MenuItem value="Lost">Lost</MenuItem>
+                            <MenuItem value="Damaged">Damaged</MenuItem>
+                          </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
                           <TextField

@@ -100,6 +100,7 @@ const EmailScans = () => {
     brand?: string;
     vendor?: string;
     price?: number;
+    status?: string;
     purchase_date?: string;
     category?: string;
     subcategory?: string;
@@ -123,6 +124,7 @@ const EmailScans = () => {
       const createdAsset = await createAsset({
         name: payload.product_name ?? selectedSuggestion.product_name,
         brand: payload.brand ?? selectedSuggestion.brand,
+        status: payload.status,
         category: payload.category ?? "Other",
         subcategory: payload.subcategory ?? "Custom Asset",
         vendor: payload.vendor ?? selectedSuggestion.vendor,

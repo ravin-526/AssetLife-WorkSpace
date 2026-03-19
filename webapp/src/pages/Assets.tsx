@@ -13,7 +13,6 @@ import {
   GlobalStyles,
   IconButton,
   InputAdornment,
-  ListSubheader,
   Menu,
   MenuItem,
   Paper,
@@ -77,14 +76,19 @@ const Assets = () => {
   const [senderEmailsInput, setSenderEmailsInput] = useState("");
   const [parsingMessage, setParsingMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [purchaseDateFilter, setPurchaseDateFilter] = useState({ operator: "", date: "" });
-  const [insuranceDateFilter, setInsuranceDateFilter] = useState({ operator: "", date: "" });
-  const [serviceDateFilter, setServiceDateFilter] = useState({ operator: "", date: "" });
+  const [warrantyFilter, setWarrantyFilter] = useState("");
+  const [purchaseDateFilter, setPurchaseDateFilter] = useState("");
+  const [purchaseDateFrom, setPurchaseDateFrom] = useState("");
+  const [purchaseDateTo, setPurchaseDateTo] = useState("");
+  const [insuranceDateFilter, setInsuranceDateFilter] = useState("");
+  const [serviceDateFilter, setServiceDateFilter] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "card">("grid");
   const [viewAssetDialogOpen, setViewAssetDialogOpen] = useState(false);
   const [selectedAssetDetails, setSelectedAssetDetails] = useState<Asset | null>(null);
   const [assetDetailsLoading, setAssetDetailsLoading] = useState(false);
@@ -243,6 +247,7 @@ const Assets = () => {
       quantity: 1,
       source: asset.source || "manual",
       status: "pending",
+      asset_status: String((asset as Asset & { status?: string }).status || "active"),
       email_message_id: asset.source_email_id || asset.id,
       already_added: false,
       category: asset.category || undefined,
@@ -391,6 +396,7 @@ const Assets = () => {
     brand?: string;
     vendor?: string;
     price?: number;
+    status?: string;
     purchase_date?: string;
     category?: string;
     subcategory?: string;
@@ -419,6 +425,7 @@ const Assets = () => {
         vendor: payload.vendor ?? selectedSuggestion.vendor,
         purchase_date: payload.purchase_date ?? selectedSuggestion.purchase_date,
         price: payload.price ?? selectedSuggestion.price,
+        status: payload.status,
         serial_number: payload.serial_number,
         model_number: payload.model_number,
         invoice_number: payload.invoice_number,
@@ -566,6 +573,7 @@ const Assets = () => {
     brand?: string;
     vendor?: string;
     price?: number;
+    status?: string;
     purchase_date?: string;
     category?: string;
     subcategory?: string;
@@ -592,6 +600,7 @@ const Assets = () => {
         brand: payload.brand?.trim() || undefined,
         vendor: payload.vendor?.trim() || undefined,
         price: payload.price,
+        status: payload.status?.trim() || undefined,
         purchase_date: payload.purchase_date || undefined,
         category: payload.category?.trim() || undefined,
         subcategory: payload.subcategory?.trim() || undefined,
@@ -671,10 +680,19 @@ const Assets = () => {
     if (normalized === "active") {
       return "success";
     }
+    if (normalized === "in warranty") {
+      return "success";
+    }
     if (normalized === "in repair") {
       return "warning";
     }
+    if (normalized === "expiring soon" || normalized === "due soon") {
+      return "warning";
+    }
     if (normalized === "disposed") {
+      return "error";
+    }
+    if (normalized === "lost" || normalized === "damaged" || normalized === "expired" || normalized === "overdue") {
       return "error";
     }
     return "default";
@@ -1050,106 +1068,86 @@ const Assets = () => {
     }
   };
 
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-
-  const dateNeedsInput = (operator: string) => ["before", "after", "on"].includes(operator);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim().toLowerCase());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const filteredAssets = useMemo(() => {
-    const todayMidnight = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); })();
-    const soonThreshold = new Date(todayMidnight); soonThreshold.setDate(soonThreshold.getDate() + 30);
+    // Normalize a Date to local-midnight so comparisons are day-accurate
+    // regardless of whether the source was parsed as UTC or local time.
+    const toMidnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    // Parse a YYYY-MM-DD string as local midnight (avoids UTC-offset day shift).
+    const parseYMD = (s: string) => { const [y, mo, d] = s.split("-").map(Number); return new Date(y, mo - 1, d); };
+
+    const todayMidnight = toMidnight(new Date());
+    const soonThreshold = new Date(todayMidnight);
+    soonThreshold.setDate(soonThreshold.getDate() + 30);
+    const last7 = new Date(todayMidnight);
+    last7.setDate(last7.getDate() - 7);
+    const last30 = new Date(todayMidnight);
+    last30.setDate(last30.getDate() - 30);
+    const yearStart = new Date(todayMidnight.getFullYear(), 0, 1);
+    const fromDate = purchaseDateFrom ? parseYMD(purchaseDateFrom) : null;
+    const toDate = purchaseDateTo ? parseYMD(purchaseDateTo) : null;
 
     return assets.filter((asset) => {
-      const text = [asset.name, asset.brand, asset.vendor, asset.source, asset.category, asset.subcategory]
-        .map((value) => String(value || "").toLowerCase())
-        .join(" ");
-      const searchMatch = !normalizedQuery || text.includes(normalizedQuery);
+      if (debouncedQuery) {
+        const text = [asset.name, asset.brand, asset.vendor, asset.category, asset.subcategory]
+          .map((value) => String(value || "").toLowerCase())
+          .join(" ");
+        if (!text.includes(debouncedQuery)) return false;
+      }
 
-      const computedStatus = getAssetComputedStatusLabel(asset).toLowerCase();
-      const statusMatch = !statusFilter.trim() || computedStatus === statusFilter.trim().toLowerCase();
+      if (statusFilter) {
+        const computedStatus = getAssetComputedStatusLabel(asset).toLowerCase();
+        if (computedStatus !== statusFilter.toLowerCase()) return false;
+      }
 
-      // Purchase date filter
-      let purchaseMatch = true;
-      if (purchaseDateFilter.operator) {
-        const rawDate = asset.purchase_date;
-        if (purchaseDateFilter.operator === "isEmpty") {
-          purchaseMatch = !rawDate;
-        } else if (purchaseDateFilter.date) {
-          const assetDateStr = rawDate ? String(rawDate).slice(0, 10) : null;
-          if (purchaseDateFilter.operator === "before") {
-            purchaseMatch = !!assetDateStr && assetDateStr < purchaseDateFilter.date;
-          } else if (purchaseDateFilter.operator === "after") {
-            purchaseMatch = !!assetDateStr && assetDateStr > purchaseDateFilter.date;
-          } else if (purchaseDateFilter.operator === "on") {
-            purchaseMatch = !!assetDateStr && assetDateStr === purchaseDateFilter.date;
+      if (purchaseDateFilter) {
+        const rawStr = asset.purchase_date ? String(asset.purchase_date).slice(0, 10) : null;
+        const purchaseDate = rawStr ? parseYMD(rawStr) : null;
+        if (purchaseDateFilter === "last7" && (!purchaseDate || purchaseDate < last7)) return false;
+        if (purchaseDateFilter === "last30" && (!purchaseDate || purchaseDate < last30)) return false;
+        if (purchaseDateFilter === "this_year" && (!purchaseDate || purchaseDate < yearStart)) return false;
+        if (purchaseDateFilter === "custom") {
+          if (fromDate || toDate) {
+            if (!purchaseDate) return false;
+            if (fromDate && purchaseDate < fromDate) return false;
+            if (toDate && purchaseDate > toDate) return false;
           }
         }
       }
 
-      // Insurance expiry filter
-      let insuranceMatch = true;
-      if (insuranceDateFilter.operator) {
-        const insuranceDate = getInsuranceExpiryDate(asset);
-        switch (insuranceDateFilter.operator) {
-          case "isEmpty":
-            insuranceMatch = !insuranceDate;
-            break;
-          case "expired":
-            insuranceMatch = !!insuranceDate && insuranceDate < todayMidnight;
-            break;
-          case "due_soon":
-            insuranceMatch = !!insuranceDate && insuranceDate >= todayMidnight && insuranceDate <= soonThreshold;
-            break;
-          case "scheduled":
-            insuranceMatch = !!insuranceDate && insuranceDate > soonThreshold;
-            break;
-          default:
-            if (insuranceDateFilter.date) {
-              const filterDate = new Date(insuranceDateFilter.date);
-              if (!Number.isNaN(filterDate.getTime())) {
-                if (insuranceDateFilter.operator === "before") {
-                  insuranceMatch = !!insuranceDate && insuranceDate < filterDate;
-                } else if (insuranceDateFilter.operator === "after") {
-                  insuranceMatch = !!insuranceDate && insuranceDate > filterDate;
-                }
-              }
-            }
-        }
+      if (warrantyFilter) {
+        const wRaw = getWarrantyExpiryDate(asset);
+        const wDate = wRaw ? toMidnight(wRaw) : null;
+        if (warrantyFilter === "active" && (!wDate || wDate < todayMidnight)) return false;
+        if (warrantyFilter === "expired" && (!wDate || wDate >= todayMidnight)) return false;
+        if (warrantyFilter === "due_soon" && (!wDate || wDate < todayMidnight || wDate > soonThreshold)) return false;
       }
 
-      // Service next date filter
-      let serviceMatch = true;
-      if (serviceDateFilter.operator) {
-        const serviceDate = getServiceNextDate(asset);
-        switch (serviceDateFilter.operator) {
-          case "isEmpty":
-            serviceMatch = !serviceDate;
-            break;
-          case "overdue":
-            serviceMatch = !!serviceDate && serviceDate < todayMidnight;
-            break;
-          case "due_soon":
-            serviceMatch = !!serviceDate && serviceDate >= todayMidnight && serviceDate <= soonThreshold;
-            break;
-          case "scheduled":
-            serviceMatch = !!serviceDate && serviceDate > soonThreshold;
-            break;
-          default:
-            if (serviceDateFilter.date) {
-              const filterDate = new Date(serviceDateFilter.date);
-              if (!Number.isNaN(filterDate.getTime())) {
-                if (serviceDateFilter.operator === "before") {
-                  serviceMatch = !!serviceDate && serviceDate < filterDate;
-                } else if (serviceDateFilter.operator === "after") {
-                  serviceMatch = !!serviceDate && serviceDate > filterDate;
-                }
-              }
-            }
-        }
+      if (insuranceDateFilter) {
+        const insRaw = getInsuranceExpiryDate(asset);
+        const insDate = insRaw ? toMidnight(insRaw) : null;
+        if (insuranceDateFilter === "active" && (!insDate || insDate < todayMidnight)) return false;
+        if (insuranceDateFilter === "expired" && (!insDate || insDate >= todayMidnight)) return false;
+        if (insuranceDateFilter === "due_soon" && (!insDate || insDate < todayMidnight || insDate > soonThreshold)) return false;
       }
 
-      return searchMatch && statusMatch && purchaseMatch && insuranceMatch && serviceMatch;
+      if (serviceDateFilter) {
+        const svcRaw = getServiceNextDate(asset);
+        const svcDate = svcRaw ? toMidnight(svcRaw) : null;
+        if (serviceDateFilter === "scheduled" && (!svcDate || svcDate <= soonThreshold)) return false;
+        if (serviceDateFilter === "due_soon" && (!svcDate || svcDate < todayMidnight || svcDate > soonThreshold)) return false;
+        if (serviceDateFilter === "overdue" && (!svcDate || svcDate >= todayMidnight)) return false;
+      }
+
+      return true;
     });
-  }, [assets, normalizedQuery, statusFilter, purchaseDateFilter, insuranceDateFilter, serviceDateFilter]);
+  }, [assets, debouncedQuery, statusFilter, warrantyFilter, purchaseDateFilter, purchaseDateFrom, purchaseDateTo, insuranceDateFilter, serviceDateFilter]);
 
   const editCategoryOptions = useMemo(() => {
     const options = assetCategories.map((item) => item.category);
@@ -1389,23 +1387,68 @@ const Assets = () => {
     URL.revokeObjectURL(url);
   };
 
+  const formatLifecycleExportValue = (dateText: string, metaText: string) => {
+    if (dateText && dateText !== "-") {
+      return `${dateText} (${metaText})`;
+    }
+    return metaText || "-";
+  };
+
+  const formatPurchaseExportValue = (value?: string | null) => {
+    if (!value) {
+      return "-";
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleDateString();
+  };
+
+  const formatJoinedValue = (...values: Array<string | null | undefined>) => {
+    const items = values.map((value) => String(value || "").trim()).filter(Boolean);
+    return items.length ? items.join(" / ") : "-";
+  };
+
   const handleExport = (format: "csv" | "excel") => {
     setExporting(true);
-    const rows = filteredAssets.map((asset) => [
-      asset.name,
-      asset.brand ?? "",
-      asset.vendor ?? "",
-      asset.purchase_date ? new Date(asset.purchase_date).toISOString().slice(0, 10) : "",
-      asset.price ?? "",
-      asset.source,
-    ]);
+    const rows = filteredAssets.map((asset) => {
+      const statusLabel = getAssetComputedStatusLabel(asset);
+      const warranty = getWarrantyPresentation(asset);
+      const insurance = getInsurancePresentation(asset);
+      const service = getServicePresentation(asset);
+
+      if (viewMode === "card") {
+        return [
+          asset.name || "-",
+          formatJoinedValue(asset.category, asset.subcategory),
+          formatJoinedValue(asset.brand, asset.vendor),
+          formatPurchaseExportValue(asset.purchase_date),
+          statusLabel,
+          formatLifecycleExportValue(warranty.dateText, warranty.metaText),
+          formatLifecycleExportValue(insurance.dateText, insurance.metaText),
+          formatLifecycleExportValue(service.dateText, service.metaText),
+        ];
+      }
+
+      return [
+        statusLabel,
+        asset.name || "-",
+        asset.category || "-",
+        asset.vendor || "-",
+        formatPurchaseExportValue(asset.purchase_date),
+        formatLifecycleExportValue(warranty.dateText, warranty.metaText),
+        formatLifecycleExportValue(insurance.dateText, insurance.metaText),
+        formatLifecycleExportValue(service.dateText, service.metaText),
+      ];
+    });
+    const headers = viewMode === "card"
+      ? [["Asset Name", "Category / Subcategory", "Brand / Vendor", "Purchase Date", "Status", "Warranty", "Insurance", "Service"]]
+      : [["Status", "Asset Name", "Category", "Vendor", "Purchase Date", "Warranty Expiry", "Insurance Expiry", "Next Service Date"]];
     if (format === "csv") {
-      const csv = [["Name", "Brand", "Vendor", "Purchase Date", "Price", "Source"], ...rows]
+      const csv = [...headers, ...rows]
         .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
         .join("\n");
       downloadTextFile(csv, "assets-export.csv", "text/csv;charset=utf-8;");
     } else {
-      const tsv = [["Name", "Brand", "Vendor", "Purchase Date", "Price", "Source"], ...rows]
+      const tsv = [...headers, ...rows]
         .map((row) => row.map((cell) => String(cell).replaceAll("\t", " ")).join("\t"))
         .join("\n");
       downloadTextFile(tsv, "assets-export.xls", "application/vnd.ms-excel;charset=utf-8;");
@@ -1448,11 +1491,20 @@ const Assets = () => {
         }}
       />
       <Box className="col-12">
-        <div className="grid align-items-center">
-          <div className="col-12">
-            <Typography variant="h4">Assets</Typography>
-          </div>
-        </div>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: { xs: "flex-start", md: "center" }, gap: 1.5, flexWrap: "wrap" }}>
+          <Typography variant="h4">Assets</Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, ml: { md: "auto" } }}>
+            <Button
+              size="small"
+              variant="outlined"
+              color="error"
+              onClick={() => setResetDialogOpen(true)}
+              disabled={isActionLoading("resetTestData")}
+            >
+              {isActionLoading("resetTestData") ? "Resetting..." : "Reset Test Data"}
+            </Button>
+          </Box>
+        </Box>
       </Box>
 
       <Box className="col-12" sx={{ minHeight: 0, display: "flex" }}>
@@ -1460,234 +1512,163 @@ const Assets = () => {
           {error ? <Alert severity="error">{error}</Alert> : null}
           {message ? <Alert severity="success">{message}</Alert> : null}
 
-          <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
-            <Stack spacing={2}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
-                <Typography variant="h6">Filters</Typography>
-                {(searchQuery || statusFilter || purchaseDateFilter.operator || insuranceDateFilter.operator || serviceDateFilter.operator) ? (
+          <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 2 } }}>
+            <Stack spacing={1.5}>
+              {/* Main filter row */}
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "center" }}>
+                <TextField
+                  size="small"
+                  placeholder="Search assets…"
+                  value={searchQuery}
+                  onChange={(event) => { setSearchQuery(event.target.value); setPage(0); }}
+                  sx={{ width: 220 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField size="small" select label="Status" value={statusFilter}
+                  onChange={(event) => { setStatusFilter(event.target.value); setPage(0); }}
+                  sx={{ minWidth: 140 }}
+                >
+                  <MenuItem value="">All statuses</MenuItem>
+                  {statusOptions.map((option) => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField size="small" select label="Purchase Date" value={purchaseDateFilter}
+                  onChange={(event) => {
+                    setPurchaseDateFilter(event.target.value);
+                    setPurchaseDateFrom("");
+                    setPurchaseDateTo("");
+                    setPage(0);
+                  }}
+                  sx={{ minWidth: 145 }}
+                >
+                  <MenuItem value="">All time</MenuItem>
+                  <MenuItem value="last7">Last 7 days</MenuItem>
+                  <MenuItem value="last30">Last 30 days</MenuItem>
+                  <MenuItem value="this_year">This year</MenuItem>
+                  <MenuItem value="custom">Custom range…</MenuItem>
+                </TextField>
+                {purchaseDateFilter === "custom" ? (
+                  <>
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="From"
+                      value={purchaseDateFrom}
+                      onChange={(event) => { setPurchaseDateFrom(event.target.value); setPage(0); }}
+                      sx={{ width: 160 }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="To"
+                      value={purchaseDateTo}
+                      onChange={(event) => { setPurchaseDateTo(event.target.value); setPage(0); }}
+                      sx={{ width: 160 }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </>
+                ) : null}
+                <TextField size="small" select label="Warranty" value={warrantyFilter}
+                  onChange={(event) => { setWarrantyFilter(event.target.value); setPage(0); }}
+                  sx={{ minWidth: 125 }}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="due_soon">Due soon</MenuItem>
+                  <MenuItem value="expired">Expired</MenuItem>
+                </TextField>
+                <TextField size="small" select label="Insurance" value={insuranceDateFilter}
+                  onChange={(event) => { setInsuranceDateFilter(event.target.value); setPage(0); }}
+                  sx={{ minWidth: 125 }}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="due_soon">Due soon</MenuItem>
+                  <MenuItem value="expired">Expired</MenuItem>
+                </TextField>
+                <TextField size="small" select label="Service" value={serviceDateFilter}
+                  onChange={(event) => { setServiceDateFilter(event.target.value); setPage(0); }}
+                  sx={{ minWidth: 125 }}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="scheduled">Scheduled</MenuItem>
+                  <MenuItem value="due_soon">Due soon</MenuItem>
+                  <MenuItem value="overdue">Overdue</MenuItem>
+                </TextField>
+                {(searchQuery || statusFilter || warrantyFilter || purchaseDateFilter || insuranceDateFilter || serviceDateFilter) ? (
                   <Button
                     size="small"
-                    variant="text"
+                    variant="outlined"
                     color="inherit"
                     onClick={() => {
                       setSearchQuery("");
                       setStatusFilter("");
-                      setPurchaseDateFilter({ operator: "", date: "" });
-                      setInsuranceDateFilter({ operator: "", date: "" });
-                      setServiceDateFilter({ operator: "", date: "" });
+                      setWarrantyFilter("");
+                      setPurchaseDateFilter("");
+                      setPurchaseDateFrom("");
+                      setPurchaseDateTo("");
+                      setInsuranceDateFilter("");
+                      setServiceDateFilter("");
                       setPage(0);
                     }}
-                    sx={{ color: "text.secondary", fontSize: "0.75rem" }}
+                    sx={{ whiteSpace: "nowrap", color: "text.secondary", borderColor: "divider" }}
                   >
-                    Clear all filters
+                    Clear filters
                   </Button>
                 ) : null}
               </Box>
-
-              {/* Row 1: Text search + Status */}
-              <div className="grid align-items-end">
-                <div className="col-12 md:col-6 lg:col-5 xl:col-6">
-                  <TextField
-                    size="small"
-                    placeholder="Search by asset name, vendor, or category"
-                    value={searchQuery}
-                    onChange={(event) => {
-                      setSearchQuery(event.target.value);
-                      setPage(0);
-                    }}
-                    fullWidth
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon fontSize="small" />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </div>
-                <div className="col-12 md:col-6 lg:col-3 xl:col-3">
-                  <TextField
-                    size="small"
-                    select
-                    label="Status"
-                    value={statusFilter}
-                    onChange={(event) => {
-                      setStatusFilter(event.target.value);
-                      setPage(0);
-                    }}
-                    fullWidth
-                  >
-                    <MenuItem value="">All</MenuItem>
-                    {statusOptions.map((option) => (
-                      <MenuItem key={option} value={option}>{option}</MenuItem>
-                    ))}
-                  </TextField>
-                </div>
-              </div>
-
-              {/* Row 2: Date filters */}
-              <div className="grid align-items-end">
-                {/* Purchase Date */}
-                <div className="col-12 md:col-4 lg:col-3 xl:col-3">
-                  <TextField
-                    size="small"
-                    select
-                    label="Purchase Date"
-                    value={purchaseDateFilter.operator}
-                    onChange={(event) => {
-                      setPurchaseDateFilter({ operator: event.target.value, date: "" });
-                      setPage(0);
-                    }}
-                    fullWidth
-                  >
-                    <MenuItem value="">No filter</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>Date comparison</ListSubheader>
-                    <MenuItem value="before">Is before</MenuItem>
-                    <MenuItem value="after">Is after</MenuItem>
-                    <MenuItem value="on">Is on</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>Empty</ListSubheader>
-                    <MenuItem value="isEmpty">Is empty</MenuItem>
-                  </TextField>
-                </div>
-                {dateNeedsInput(purchaseDateFilter.operator) ? (
-                  <div className="col-12 md:col-4 lg:col-3 xl:col-3">
-                    <TextField
-                      size="small"
-                      type="date"
-                      label="Purchase date"
-                      value={purchaseDateFilter.date}
-                      onChange={(event) => {
-                        setPurchaseDateFilter((prev) => ({ ...prev, date: event.target.value }));
-                        setPage(0);
-                      }}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </div>
-                ) : null}
-
-                {/* Insurance Expiry */}
-                <div className="col-12 md:col-4 lg:col-3 xl:col-3">
-                  <TextField
-                    size="small"
-                    select
-                    label="Insurance Expiry"
-                    value={insuranceDateFilter.operator}
-                    onChange={(event) => {
-                      setInsuranceDateFilter({ operator: event.target.value, date: "" });
-                      setPage(0);
-                    }}
-                    fullWidth
-                  >
-                    <MenuItem value="">No filter</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>By status</ListSubheader>
-                    <MenuItem value="expired">Expired</MenuItem>
-                    <MenuItem value="due_soon">Due soon (≤ 30 days)</MenuItem>
-                    <MenuItem value="scheduled">Scheduled (&gt; 30 days)</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>By date</ListSubheader>
-                    <MenuItem value="before">Is before</MenuItem>
-                    <MenuItem value="after">Is after</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>Empty</ListSubheader>
-                    <MenuItem value="isEmpty">Is empty</MenuItem>
-                  </TextField>
-                </div>
-                {dateNeedsInput(insuranceDateFilter.operator) ? (
-                  <div className="col-12 md:col-4 lg:col-3 xl:col-3">
-                    <TextField
-                      size="small"
-                      type="date"
-                      label="Insurance date"
-                      value={insuranceDateFilter.date}
-                      onChange={(event) => {
-                        setInsuranceDateFilter((prev) => ({ ...prev, date: event.target.value }));
-                        setPage(0);
-                      }}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </div>
-                ) : null}
-
-                {/* Next Service Date */}
-                <div className="col-12 md:col-4 lg:col-3 xl:col-3">
-                  <TextField
-                    size="small"
-                    select
-                    label="Next Service Date"
-                    value={serviceDateFilter.operator}
-                    onChange={(event) => {
-                      setServiceDateFilter({ operator: event.target.value, date: "" });
-                      setPage(0);
-                    }}
-                    fullWidth
-                  >
-                    <MenuItem value="">No filter</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>By status</ListSubheader>
-                    <MenuItem value="overdue">Overdue</MenuItem>
-                    <MenuItem value="due_soon">Due soon (≤ 30 days)</MenuItem>
-                    <MenuItem value="scheduled">Scheduled (&gt; 30 days)</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>By date</ListSubheader>
-                    <MenuItem value="before">Is before</MenuItem>
-                    <MenuItem value="after">Is after</MenuItem>
-                    <ListSubheader sx={{ lineHeight: "28px", fontSize: "0.7rem", color: "text.disabled" }}>Empty</ListSubheader>
-                    <MenuItem value="isEmpty">Is empty</MenuItem>
-                  </TextField>
-                </div>
-                {dateNeedsInput(serviceDateFilter.operator) ? (
-                  <div className="col-12 md:col-4 lg:col-3 xl:col-3">
-                    <TextField
-                      size="small"
-                      type="date"
-                      label="Service date"
-                      value={serviceDateFilter.date}
-                      onChange={(event) => {
-                        setServiceDateFilter((prev) => ({ ...prev, date: event.target.value }));
-                        setPage(0);
-                      }}
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </div>
-                ) : null}
-              </div>
             </Stack>
           </Paper>
 
           <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, minHeight: 0, display: "flex", flexDirection: "column", flex: 1 }}>
             <Stack spacing={1.5} sx={{ minHeight: 0, flex: 1 }}>
-              <div className="grid align-items-center">
-                <div className="col-12 md:col-6">
-                  <Typography variant="h6">Asset Grid</Typography>
-                </div>
-                <div className="col-12 md:col-6">
-                  <Box sx={{ display: "flex", justifyContent: { xs: "flex-start", md: "flex-end" }, gap: 1.5, flexWrap: "wrap" }}>
-                    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      {/* TEMPORARY TESTING FEATURE */}
-                      {/* This button removes asset-related testing data. */}
-                      {/* It must be removed before production deployment. */}
-                      <Button
-                        variant="contained"
-                        color="error"
-                        onClick={() => setResetDialogOpen(true)}
-                        disabled={isActionLoading("resetTestData")}
-                        sx={{ height: 36 }}
-                      >
-                        {isActionLoading("resetTestData") ? "Resetting..." : "Reset Test Data"}
-                      </Button>
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                        Temporary testing feature
-                      </Typography>
-                    </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
+                <Box>
+                  <Typography variant="h6" sx={{ lineHeight: 1.3 }}>{viewMode === "grid" ? "Asset Grid" : "Asset Cards"}</Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.25 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total: <strong>{assets.length}</strong>
+                    </Typography>
+                    <Typography variant="body2" color="text.disabled">|</Typography>
+                    <Typography variant="body2" color={filteredAssets.length < assets.length ? "primary" : "text.secondary"}>
+                      Filtered: <strong>{filteredAssets.length}</strong>
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Box sx={{ display: "flex", gap: 0.5, p: 0.5, border: 1, borderColor: "divider", borderRadius: 1, bgcolor: "background.paper" }}>
+                    <Button
+                      size="small"
+                      variant={viewMode === "grid" ? "contained" : "text"}
+                      onClick={() => setViewMode("grid")}
+                    >
+                      Grid View
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={viewMode === "card" ? "contained" : "text"}
+                      onClick={() => setViewMode("card")}
+                    >
+                      Card View
+                    </Button>
+                  </Box>
                   <Button
+                    size="small"
                     variant="outlined"
                     endIcon={exporting ? <CircularProgress size={14} /> : <ArrowDropDownIcon />}
                     onClick={(event) => setExportAnchorEl(event.currentTarget)}
                     disabled={exporting}
-                    sx={{ height: 36 }}
                   >
                     Export
                   </Button>
-                  </Box>
                   <Menu
                     anchorEl={exportAnchorEl}
                     open={Boolean(exportAnchorEl)}
@@ -1696,8 +1677,8 @@ const Assets = () => {
                     <MenuItem onClick={() => handleExport("csv")}>CSV</MenuItem>
                     <MenuItem onClick={() => handleExport("excel")}>Excel</MenuItem>
                   </Menu>
-                </div>
-              </div>
+                </Box>
+              </Box>
 
               {loading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -1705,93 +1686,29 @@ const Assets = () => {
                 </Box>
               ) : (
                 <>
-                  <Paper variant="outlined" sx={{ height: 500, overflowY: "auto", overflowX: "auto", minHeight: 0, position: "relative" }}>
-                    <Box sx={{ minWidth: 1450 }}>
-                      {/* Header row */}
-                      <Box
-                        sx={{
-                          display: "grid",
-                          gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
-                          columnGap: 2,
-                          py: 1.25,
-                          bgcolor: "grey.100",
-                          borderBottom: 1,
-                          borderColor: "divider",
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 2,
-                        }}
-                      >
-                        {/* Status header — pinned left */}
+                  {viewMode === "grid" ? (
+                    <Paper variant="outlined" sx={{ height: 500, overflowY: "auto", overflowX: "auto", minHeight: 0, position: "relative" }}>
+                      <Box sx={{ minWidth: 1450 }}>
                         <Box
-                          sx={{
-                            pl: 2,
-                            position: "sticky",
-                            left: 0,
-                            bgcolor: "grey.100",
-                            zIndex: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            borderRight: 1,
-                            borderColor: "divider",
-                          }}
-                        >
-                          <Typography variant="subtitle2">Status</Typography>
-                        </Box>
-                        <Typography variant="subtitle2">Asset Name</Typography>
-                        <Typography variant="subtitle2">Category</Typography>
-                        <Typography variant="subtitle2">Vendor</Typography>
-                        <Typography variant="subtitle2">Purchase Date</Typography>
-                        <Typography variant="subtitle2">Warranty Expiry</Typography>
-                        <Typography variant="subtitle2">Insurance Expiry</Typography>
-                        <Typography variant="subtitle2">Next Service Date</Typography>
-                        {/* Actions header — pinned right */}
-                        <Box
-                          sx={{
-                            pl: 1,
-                            position: "sticky",
-                            right: 0,
-                            bgcolor: "grey.100",
-                            zIndex: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "flex-start",
-                            borderLeft: 1,
-                            borderColor: "divider",
-                          }}
-                        >
-                          <Typography variant="subtitle2">Actions</Typography>
-                        </Box>
-                      </Box>
-
-                      {/* Data rows */}
-                      {paginatedAssets.map((asset) => (
-                        (() => {
-                          const statusLabel = getAssetComputedStatusLabel(asset);
-                          const warranty = getWarrantyPresentation(asset);
-                          const insurance = getInsurancePresentation(asset);
-                          const service = getServicePresentation(asset);
-
-                          return (
-                        <Box
-                          key={asset.id}
                           sx={{
                             display: "grid",
                             gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
                             columnGap: 2,
-                            alignItems: "stretch",
-                            py: 1.1,
+                            py: 1.25,
+                            bgcolor: "grey.100",
                             borderBottom: 1,
                             borderColor: "divider",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 2,
                           }}
                         >
-                          {/* Status — pinned left */}
                           <Box
                             sx={{
                               pl: 2,
                               position: "sticky",
                               left: 0,
-                              bgcolor: "background.paper",
+                              bgcolor: "grey.100",
                               zIndex: 1,
                               display: "flex",
                               alignItems: "center",
@@ -1799,45 +1716,21 @@ const Assets = () => {
                               borderColor: "divider",
                             }}
                           >
-                            <Chip size="small" label={statusLabel} color={getStatusChipColor(statusLabel)} variant="filled" />
+                            <Typography variant="subtitle2">Status</Typography>
                           </Box>
-                          <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.name || "-"}</Typography>
-                          <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.category || "-"}</Typography>
-                          <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.vendor || "-"}</Typography>
-                          <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : "-"}</Typography>
-                          <Tooltip title={warranty.tooltip}>
-                            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                              <Typography variant="body2">{warranty.dateText}</Typography>
-                              <Typography variant="caption" sx={{ color: warranty.metaColor }}>
-                                {warranty.metaText}
-                              </Typography>
-                            </Box>
-                          </Tooltip>
-                          <Tooltip title={insurance.tooltip}>
-                            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                              <Typography variant="body2">{insurance.dateText}</Typography>
-                              <Typography variant="caption" sx={{ color: insurance.metaColor }}>
-                                {insurance.metaText}
-                              </Typography>
-                            </Box>
-                          </Tooltip>
-                          <Tooltip title={service.tooltip}>
-                            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                              <Typography variant="body2">{service.dateText}</Typography>
-                              <Typography variant="caption" sx={{ color: service.metaColor }}>
-                                {service.metaText}
-                              </Typography>
-                            </Box>
-                          </Tooltip>
-                          {/* Actions — pinned right */}
-                          <Stack
-                            direction="row"
-                            spacing={0.5}
+                          <Typography variant="subtitle2">Asset Name</Typography>
+                          <Typography variant="subtitle2">Category</Typography>
+                          <Typography variant="subtitle2">Vendor</Typography>
+                          <Typography variant="subtitle2">Purchase Date</Typography>
+                          <Typography variant="subtitle2">Warranty Expiry</Typography>
+                          <Typography variant="subtitle2">Insurance Expiry</Typography>
+                          <Typography variant="subtitle2">Next Service Date</Typography>
+                          <Box
                             sx={{
                               pl: 1,
                               position: "sticky",
                               right: 0,
-                              bgcolor: "background.paper",
+                              bgcolor: "grey.100",
                               zIndex: 1,
                               display: "flex",
                               alignItems: "center",
@@ -1846,80 +1739,263 @@ const Assets = () => {
                               borderColor: "divider",
                             }}
                           >
-                            <Tooltip title="View">
-                              <span>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => {
-                                    void handleOpenAssetDetails(asset.id);
-                                  }}
-                                >
-                                  <VisibilityOutlinedIcon fontSize="small" />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
-                            <Tooltip title="Edit">
-                              <IconButton size="small" onClick={() => { void handleOpenEdit(asset); }}>
-                                <EditOutlinedIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete">
-                              <IconButton size="small" color="error" onClick={() => handleOpenDelete(asset)}>
-                                <DeleteOutlineIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
+                            <Typography variant="subtitle2">Actions</Typography>
+                          </Box>
                         </Box>
-                          );
-                        })()
-                      ))}
-                    </Box>
-                  </Paper>
 
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "flex-start",
-                      flexWrap: "wrap",
-                      gap: 1,
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary" sx={{ pl: 2, pr: 1 }}>
-                      {(() => {
-                        const total = filteredAssets.length;
-                        if (total === 0) {
-                          return "Showing 0-0 of 0";
-                        }
-                        const start = page * rowsPerPage + 1;
-                        const end = Math.min(total, page * rowsPerPage + rowsPerPage);
-                        return `Showing ${start}-${end} of ${total}`;
-                      })()}
-                    </Typography>
-                    <TablePagination
-                      component="div"
-                      count={filteredAssets.length}
-                      page={page}
-                      onPageChange={(_, nextPage) => setPage(nextPage)}
-                      rowsPerPage={rowsPerPage}
-                      onRowsPerPageChange={(event) => {
-                        setRowsPerPage(Number(event.target.value));
-                        setPage(0);
-                      }}
-                      rowsPerPageOptions={[5, 10, 25, 50]}
-                      labelDisplayedRows={() => ""}
+                        {paginatedAssets.map((asset) => (
+                          (() => {
+                            const statusLabel = getAssetComputedStatusLabel(asset);
+                            const warranty = getWarrantyPresentation(asset);
+                            const insurance = getInsurancePresentation(asset);
+                            const service = getServicePresentation(asset);
+
+                            return (
+                          <Box
+                            key={asset.id}
+                            sx={{
+                              display: "grid",
+                              gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
+                              columnGap: 2,
+                              alignItems: "stretch",
+                              py: 1.1,
+                              borderBottom: 1,
+                              borderColor: "divider",
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                pl: 2,
+                                position: "sticky",
+                                left: 0,
+                                bgcolor: "background.paper",
+                                zIndex: 1,
+                                display: "flex",
+                                alignItems: "center",
+                                borderRight: 1,
+                                borderColor: "divider",
+                              }}
+                            >
+                              <Chip size="small" label={statusLabel} color={getStatusChipColor(statusLabel)} variant="outlined" />
+                            </Box>
+                            <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.name || "-"}</Typography>
+                            <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.category || "-"}</Typography>
+                            <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.vendor || "-"}</Typography>
+                            <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : "-"}</Typography>
+                            <Tooltip title={warranty.tooltip}>
+                              <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                                <Typography variant="body2">{warranty.dateText}</Typography>
+                                <Typography variant="caption" sx={{ color: warranty.metaColor }}>
+                                  {warranty.metaText}
+                                </Typography>
+                              </Box>
+                            </Tooltip>
+                            <Tooltip title={insurance.tooltip}>
+                              <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                                <Typography variant="body2">{insurance.dateText}</Typography>
+                                <Typography variant="caption" sx={{ color: insurance.metaColor }}>
+                                  {insurance.metaText}
+                                </Typography>
+                              </Box>
+                            </Tooltip>
+                            <Tooltip title={service.tooltip}>
+                              <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                                <Typography variant="body2">{service.dateText}</Typography>
+                                <Typography variant="caption" sx={{ color: service.metaColor }}>
+                                  {service.metaText}
+                                </Typography>
+                              </Box>
+                            </Tooltip>
+                            <Stack
+                              direction="row"
+                              spacing={0.5}
+                              sx={{
+                                pl: 1,
+                                position: "sticky",
+                                right: 0,
+                                bgcolor: "background.paper",
+                                zIndex: 1,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "flex-start",
+                                borderLeft: 1,
+                                borderColor: "divider",
+                              }}
+                            >
+                              <Tooltip title="View">
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => {
+                                      void handleOpenAssetDetails(asset.id);
+                                    }}
+                                  >
+                                    <VisibilityOutlinedIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title="Edit">
+                                <IconButton size="small" onClick={() => { void handleOpenEdit(asset); }}>
+                                  <EditOutlinedIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete">
+                                <IconButton size="small" color="error" onClick={() => handleOpenDelete(asset)}>
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Stack>
+                          </Box>
+                            );
+                          })()
+                        ))}
+                      </Box>
+                    </Paper>
+                  ) : (
+                    <Box sx={{ overflowY: "auto", maxHeight: "calc(100vh - 360px)" }}>
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gap: 1.5,
+                          gridTemplateColumns: {
+                            xs: "1fr",
+                            md: "repeat(2, minmax(0, 1fr))",
+                            xl: "repeat(3, minmax(0, 1fr))",
+                          },
+                        }}
+                      >
+                        {filteredAssets.map((asset) => {
+                          const statusLabel = getAssetComputedStatusLabel(asset);
+                          const warranty = getWarrantyPresentation(asset);
+                          const insurance = getInsurancePresentation(asset);
+                          const service = getServicePresentation(asset);
+
+                          return (
+                            <Paper key={asset.id} variant="outlined" sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+                              {/* Header: name/category + action icons top-right */}
+                              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 0.5 }}>
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                  <Typography variant="body1" noWrap sx={{ fontWeight: 600, lineHeight: 1.3 }}>{asset.name || "-"}</Typography>
+                                  <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                                    {formatJoinedValue(asset.category, asset.subcategory)}
+                                  </Typography>
+                                </Box>
+                                <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
+                                  <Tooltip title="View">
+                                    <span>
+                                      <IconButton size="small" sx={{ p: 0.5 }} onClick={() => { void handleOpenAssetDetails(asset.id); }}>
+                                        <VisibilityOutlinedIcon sx={{ fontSize: 15 }} />
+                                      </IconButton>
+                                    </span>
+                                  </Tooltip>
+                                  <Tooltip title="Edit">
+                                    <IconButton size="small" sx={{ p: 0.5 }} onClick={() => { void handleOpenEdit(asset); }}>
+                                      <EditOutlinedIcon sx={{ fontSize: 15 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Delete">
+                                    <IconButton size="small" color="error" sx={{ p: 0.5 }} onClick={() => handleOpenDelete(asset)}>
+                                      <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Stack>
+                              </Box>
+
+                              {/* Brand/Vendor + Purchase Date */}
+                              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                                <Box>
+                                  <Typography variant="caption" color="text.disabled" sx={{ display: "block", lineHeight: 1.2 }}>Brand / Vendor</Typography>
+                                  <Typography variant="caption">{formatJoinedValue(asset.brand, asset.vendor)}</Typography>
+                                </Box>
+                                <Box>
+                                  <Typography variant="caption" color="text.disabled" sx={{ display: "block", lineHeight: 1.2 }}>Purchase Date</Typography>
+                                  <Typography variant="caption">{formatPurchaseExportValue(asset.purchase_date)}</Typography>
+                                </Box>
+                              </Box>
+
+                              <Divider />
+
+                              {/* Lifecycle — single row */}
+                              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, alignItems: "center" }}>
+                                <Tooltip title={warranty.tooltip}>
+                                  <Typography variant="caption" sx={{ cursor: "default" }}>
+                                    <Box component="span" sx={{ color: "text.disabled" }}>Warranty: </Box>
+                                    <Box component="span" sx={{ color: warranty.metaColor }}>{warranty.dateText !== "-" ? warranty.dateText : warranty.metaText}</Box>
+                                  </Typography>
+                                </Tooltip>
+                                <Typography variant="caption" sx={{ color: "text.disabled" }}>·</Typography>
+                                <Tooltip title={insurance.tooltip}>
+                                  <Typography variant="caption" sx={{ cursor: "default" }}>
+                                    <Box component="span" sx={{ color: "text.disabled" }}>Insurance: </Box>
+                                    <Box component="span" sx={{ color: insurance.metaColor }}>{insurance.dateText !== "-" ? insurance.dateText : insurance.metaText}</Box>
+                                  </Typography>
+                                </Tooltip>
+                                <Typography variant="caption" sx={{ color: "text.disabled" }}>·</Typography>
+                                <Tooltip title={service.tooltip}>
+                                  <Typography variant="caption" sx={{ cursor: "default" }}>
+                                    <Box component="span" sx={{ color: "text.disabled" }}>Service: </Box>
+                                    <Box component="span" sx={{ color: service.metaColor }}>{service.dateText !== "-" ? service.dateText : service.metaText}</Box>
+                                  </Typography>
+                                </Tooltip>
+                              </Box>
+
+                              {/* Status — bottom right */}
+                              <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                                <Chip size="small" label={statusLabel} color={getStatusChipColor(statusLabel)} variant="outlined" />
+                              </Box>
+                            </Paper>
+                          );
+                        })}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {viewMode === "grid" ? (
+                    <Box
                       sx={{
-                        ml: 0,
-                        ".MuiTablePagination-displayedRows": { display: "none" },
-                        ".MuiTablePagination-toolbar": {
-                          pl: 0,
-                        },
-                        ".MuiTablePagination-spacer": {
-                          display: "none",
-                        },
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                        flexWrap: "wrap",
+                        gap: 1,
                       }}
-                    />
-                  </Box>
+                    >
+                      <Typography variant="body2" color="text.secondary" sx={{ pl: 2, pr: 1 }}>
+                        {(() => {
+                          const total = filteredAssets.length;
+                          if (total === 0) {
+                            return "Showing 0-0 of 0";
+                          }
+                          const start = page * rowsPerPage + 1;
+                          const end = Math.min(total, page * rowsPerPage + rowsPerPage);
+                          return `Showing ${start}-${end} of ${total}`;
+                        })()}
+                      </Typography>
+                      <TablePagination
+                        component="div"
+                        count={filteredAssets.length}
+                        page={page}
+                        onPageChange={(_, nextPage) => setPage(nextPage)}
+                        rowsPerPage={rowsPerPage}
+                        onRowsPerPageChange={(event) => {
+                          setRowsPerPage(Number(event.target.value));
+                          setPage(0);
+                        }}
+                        rowsPerPageOptions={[5, 10, 25, 50]}
+                        labelDisplayedRows={() => ""}
+                        sx={{
+                          ml: 0,
+                          ".MuiTablePagination-displayedRows": { display: "none" },
+                          ".MuiTablePagination-toolbar": {
+                            pl: 0,
+                          },
+                          ".MuiTablePagination-spacer": {
+                            display: "none",
+                          },
+                        }}
+                      />
+                    </Box>
+                  ) : null}
                 </>
               )}
             </Stack>
