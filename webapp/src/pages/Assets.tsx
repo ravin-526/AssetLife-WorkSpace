@@ -56,6 +56,7 @@ import {
   updateAsset,
   uploadAssetDocuments,
 } from "../services/gmail.ts";
+import { getWarrantyEndDate, getInsuranceEndDate, getServiceDueDate } from "../utils/assetStatus.ts";
 
 const Assets = () => {
   const navigate = useNavigate();
@@ -1102,8 +1103,8 @@ const Assets = () => {
       }
 
       if (statusFilter) {
-        const computedStatus = getAssetComputedStatusLabel(asset).toLowerCase();
-        if (computedStatus !== statusFilter.toLowerCase()) return false;
+        const manualStatus = String((asset as Asset & { status?: string }).status || "").trim();
+        if (manualStatus !== statusFilter) return false;
       }
 
       if (purchaseDateFilter) {
@@ -1167,7 +1168,13 @@ const Assets = () => {
   }, [assetCategories, editForm.category, editForm.subcategory]);
 
   const statusOptions = useMemo(() => {
-    return Array.from(new Set(assets.map((asset) => getAssetComputedStatusLabel(asset).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return Array.from(
+      new Set(
+        assets
+          .map((asset) => String((asset as Asset & { status?: string }).status || "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
   }, [assets]);
 
   const paginatedAssets = filteredAssets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);

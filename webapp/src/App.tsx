@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { CssBaseline, ThemeProvider } from "@mui/material";
+import { CssBaseline, GlobalStyles, ThemeProvider } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 
 import AdminLayout from "./components/AdminLayout.tsx";
@@ -71,6 +71,20 @@ const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <GlobalStyles
+        styles={{
+          "@keyframes fadeInUp": {
+            from: {
+              opacity: 0,
+              transform: "translateY(10px)",
+            },
+            to: {
+              opacity: 1,
+              transform: "translateY(0)",
+            },
+          },
+        }}
+      />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <DocumentTitleManager />
         <Routes>
