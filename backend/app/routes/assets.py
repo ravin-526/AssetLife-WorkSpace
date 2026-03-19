@@ -402,6 +402,7 @@ def _to_asset(item: dict[str, Any]) -> dict[str, Any]:
         "id": str(item.get("_id", "")),
         "name": item.get("name", ""),
         "asset_name": item.get("asset_name") or item.get("name"),
+        "status": item.get("status"),
         "vendor": item.get("vendor"),
         "purchase_date": item.get("purchase_date"),
         "price": item.get("price"),
@@ -702,6 +703,19 @@ def _lifecycle_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _enrich_service_lifecycle(service: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Compute and persist next_service_date into the service dict before saving."""
+    if not isinstance(service, dict) or not service.get("required"):
+        return service
+    interval_days = int(service.get("custom_interval_days") or 0)
+    if interval_days <= 0:
+        frequency = str(service.get("frequency") or "monthly")
+        mapping = {"monthly": 30, "quarterly": 90, "half_yearly": 180, "yearly": 365}
+        interval_days = mapping.get(frequency, 30)
+    next_service_date = (datetime.now(timezone.utc) + timedelta(days=interval_days)).date().isoformat()
+    return {**service, "next_service_date": next_service_date}
+
+
 async def _create_reminders_for_lifecycle(
     asset_id: str,
     asset_name: str,
@@ -777,6 +791,48 @@ async def _create_reminders_for_lifecycle(
         await db["reminders"].insert_many(reminders)
 
     return len(reminders)
+
+
+async def _sync_reminders_on_asset_update(
+    asset_id: str,
+    asset_name: str,
+    old_lifecycle: dict[str, Any] | None,
+    new_lifecycle: dict[str, Any] | None,
+    user_id: str,
+    db,
+) -> None:
+    """
+    Sync reminders when asset lifecycle details are updated.
+    Deletes old reminders for changed fields and creates new ones.
+    """
+    if not new_lifecycle:
+        return
+
+    # Determine which lifecycle fields changed
+    old_warranty = (old_lifecycle.get("warranty") if old_lifecycle else None) or {}
+    new_warranty = new_lifecycle.get("warranty") or {}
+    warranty_changed = old_warranty != new_warranty
+
+    old_insurance = (old_lifecycle.get("insurance") if old_lifecycle else None) or {}
+    new_insurance = new_lifecycle.get("insurance") or {}
+    insurance_changed = old_insurance != new_insurance
+
+    old_service = (old_lifecycle.get("service") if old_lifecycle else None) or {}
+    new_service = new_lifecycle.get("service") or {}
+    service_changed = old_service != new_service
+
+    # Delete old reminders for changed fields
+    if warranty_changed:
+        await db["reminders"].delete_many({"asset_id": asset_id, "user_id": user_id, "reminder_type": "warranty"})
+
+    if insurance_changed:
+        await db["reminders"].delete_many({"asset_id": asset_id, "user_id": user_id, "reminder_type": "custom", "title": {"$regex": f"Insurance renewal for {asset_name}"}})
+
+    if service_changed:
+        await db["reminders"].delete_many({"asset_id": asset_id, "user_id": user_id, "reminder_type": "service"})
+
+    # Create new reminders based on updated lifecycle info
+    await _create_reminders_for_lifecycle(asset_id, asset_name, new_lifecycle, user_id, db)
 
 
 async def _find_duplicate_asset(payload: dict[str, Any], user_id: str, db) -> dict[str, Any] | None:
@@ -1001,6 +1057,7 @@ async def create_asset(payload: dict[str, Any], current_user: dict[str, str] = D
         "name": name,
         "name_normalized": _normalized_lower(name),
         "asset_name": name,
+        "status": payload.get("status"),
         "brand": payload.get("brand"),
         "category": category,
         "subcategory": subcategory,
@@ -1017,7 +1074,7 @@ async def create_asset(payload: dict[str, Any], current_user: dict[str, str] = D
         "assigned_user": payload.get("assigned_user"),
         "warranty": lifecycle_info.get("warranty") if lifecycle_info else None,
         "insurance": lifecycle_info.get("insurance") if lifecycle_info else None,
-        "service": lifecycle_info.get("service") if lifecycle_info else None,
+        "service": _enrich_service_lifecycle(lifecycle_info.get("service")) if lifecycle_info else None,
         "source": payload.get("source") or "manual",
         "source_email_id": payload.get("source_email_id"),
         "source_email_sender": payload.get("source_email_sender"),
@@ -1070,10 +1127,16 @@ async def update_asset(asset_id: str, payload: dict[str, Any], current_user: dic
     except Exception as error:  # pragma: no cover
         raise HTTPException(status_code=400, detail="Invalid asset id") from error
 
+    # Fetch old asset to detect lifecycle changes
+    old_asset = await db["assets"].find_one({"_id": object_id, "user_id": current_user["id"]})
+    if not old_asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
     lifecycle_info = _lifecycle_payload(payload)
     allowed = {
         "name",
         "asset_name",
+        "status",
         "brand",
         "vendor",
         "purchase_date",
@@ -1102,7 +1165,7 @@ async def update_asset(asset_id: str, payload: dict[str, Any], current_user: dic
     if lifecycle_info:
         update_data["warranty"] = lifecycle_info.get("warranty")
         update_data["insurance"] = lifecycle_info.get("insurance")
-        update_data["service"] = lifecycle_info.get("service")
+        update_data["service"] = _enrich_service_lifecycle(lifecycle_info.get("service"))
 
     category = update_data.get("category")
     if category is not None and not _text(category):
@@ -1118,6 +1181,21 @@ async def update_asset(asset_id: str, payload: dict[str, Any], current_user: dic
     item = await db["assets"].find_one({"_id": object_id, "user_id": current_user["id"]})
     if not item:
         raise HTTPException(status_code=404, detail="Asset not found")
+
+    # Sync reminders if lifecycle info was updated
+    if lifecycle_info:
+        asset_name = str(item.get("name") or "Asset")
+        old_lifecycle = (
+            {
+                "warranty": old_asset.get("warranty"),
+                "insurance": old_asset.get("insurance"),
+                "service": old_asset.get("service"),
+            }
+            if old_asset
+            else None
+        )
+        await _sync_reminders_on_asset_update(asset_id, asset_name, old_lifecycle, lifecycle_info, current_user["id"], db)
+
     return _to_asset(item)
 
 
