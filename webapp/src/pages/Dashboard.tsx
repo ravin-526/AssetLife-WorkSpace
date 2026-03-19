@@ -41,7 +41,7 @@ import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import { Asset, getAssetSuggestions, getAssets } from "../services/gmail.ts";
 import { Reminder, getReminders } from "../services/reminders.ts";
 import {
-  calculateAssetCounts,
+  getLifecycleStatus,
   getAssetStatusLabel,
   getWarrantyEndDate,
   getInsuranceEndDate,
@@ -77,7 +77,7 @@ const AnimatedNumber = ({ value, duration = 600 }: { value: number; duration?: n
 };
 
 type SummaryCardConfig = {
-  key: string;
+  key: "total" | "active" | "expired" | "dueSoon" | "inactive";
   label: string;
   value: number;
   color: "text.secondary" | "success.main" | "error.main" | "warning.main" | "info.main" | "grey.600";
@@ -253,7 +253,25 @@ const Dashboard = () => {
   }, []);
 
   const summary = useMemo(() => {
-    return calculateAssetCounts(assets);
+    return assets.reduce(
+      (acc, asset) => {
+        const lifecycleStatus = getLifecycleStatus(asset);
+        const manualStatus = String((asset as Asset & { status?: string }).status || "").trim().toLowerCase();
+        acc.total += 1;
+        acc[lifecycleStatus] += 1;
+        if (manualStatus === "inactive") {
+          acc.inactive += 1;
+        }
+        return acc;
+      },
+      {
+        total: 0,
+        active: 0,
+        expired: 0,
+        dueSoon: 0,
+        inactive: 0,
+      }
+    );
   }, [assets]);
 
   const summaryCards = useMemo<SummaryCardConfig[]>(() => {
@@ -602,14 +620,14 @@ const Dashboard = () => {
     }));
 
     return (
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie
             data={chartData}
             cx="50%"
             cy="50%"
-            innerRadius={60}
-            outerRadius={90}
+            innerRadius={50}
+            outerRadius={75}
             paddingAngle={2}
             dataKey="value"
             isAnimationActive={true}
@@ -632,9 +650,20 @@ const Dashboard = () => {
     setSelectedAsset(asset);
   };
 
-  const handleCardClick = (cardKey: string) => {
-    void cardKey;
-    navigate("/assets");
+  const handleCardClick = (cardKey: SummaryCardConfig["key"]) => {
+    const filterMap: Record<SummaryCardConfig["key"], "all" | "active" | "expired" | "dueSoon" | "inactive"> = {
+      total: "all",
+      active: "active",
+      expired: "expired",
+      dueSoon: "dueSoon",
+      inactive: "inactive",
+    };
+
+    navigate("/assets", {
+      state: {
+        lifecycleFilter: filterMap[cardKey],
+      },
+    });
   };
 
   const getAlertDisplay = (alertType: AssetAlert["alertType"]) => {
@@ -808,7 +837,7 @@ const Dashboard = () => {
                   <Button
                     size="small"
                     variant="outlined"
-                    onClick={() => navigate("/assets?filter=critical")}
+                    onClick={() => navigate("/assets")}
                   >
                     View critical assets
                   </Button>

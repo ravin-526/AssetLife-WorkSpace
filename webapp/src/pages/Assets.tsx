@@ -29,7 +29,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import PrintOutlinedIcon from "@mui/icons-material/PrintOutlined";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
@@ -56,10 +56,22 @@ import {
   updateAsset,
   uploadAssetDocuments,
 } from "../services/gmail.ts";
-import { getWarrantyEndDate, getInsuranceEndDate, getServiceDueDate } from "../utils/assetStatus.ts";
+import { getLifecycleStatus, getWarrantyEndDate, getInsuranceEndDate, getServiceDueDate } from "../utils/assetStatus.ts";
+
+type LifecycleFilter = "all" | "active" | "expired" | "dueSoon" | "inactive";
+
+const normalizeStatusLabel = (status: string) => {
+  const trimmed = status.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
 
 const Assets = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [suggestions, setSuggestions] = useState<AssetSuggestion[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = useState<AssetSuggestion | null>(null);
@@ -127,6 +139,8 @@ const Assets = () => {
   const [mailboxEmailInputError, setMailboxEmailInputError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [appliedLifecycleFilter, setAppliedLifecycleFilter] = useState<LifecycleFilter | null>(null);
+  const [redirectLifecycleFilter, setRedirectLifecycleFilter] = useState<LifecycleFilter | null>(null);
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
   useAutoDismissMessage(error, setError, { delay: 5000 });
@@ -195,6 +209,68 @@ const Assets = () => {
       navigate("/assets/add?method=email_sync", { replace: true });
     }
   }, [navigate]);
+
+  useEffect(() => {
+    const incomingState = location.state as { lifecycleFilter?: LifecycleFilter } | null;
+    const incomingLifecycleFilter = incomingState?.lifecycleFilter;
+
+    if (
+      incomingLifecycleFilter === "all"
+      || incomingLifecycleFilter === "active"
+      || incomingLifecycleFilter === "expired"
+      || incomingLifecycleFilter === "dueSoon"
+      || incomingLifecycleFilter === "inactive"
+    ) {
+      setRedirectLifecycleFilter(incomingLifecycleFilter);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!redirectLifecycleFilter) {
+      return;
+    }
+
+    if (redirectLifecycleFilter === "inactive") {
+      const matchedInactiveStatus = assets
+        .map((asset) => String(asset.status || "").trim())
+        .find((status) => status.toLowerCase() === "inactive");
+
+      setStatusFilter(matchedInactiveStatus || "Inactive");
+      setAppliedLifecycleFilter(null);
+      setRedirectLifecycleFilter(null);
+      setPage(0);
+      return;
+    }
+
+    if (redirectLifecycleFilter === "all") {
+      setAppliedLifecycleFilter(null);
+      setStatusFilter("");
+      setRedirectLifecycleFilter(null);
+      setPage(0);
+      return;
+    }
+
+    setAppliedLifecycleFilter(redirectLifecycleFilter);
+    setStatusFilter("");
+    setRedirectLifecycleFilter(null);
+    setPage(0);
+  }, [assets, redirectLifecycleFilter]);
+
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("");
+    setAppliedLifecycleFilter(null);
+    setRedirectLifecycleFilter(null);
+    setWarrantyFilter("");
+    setPurchaseDateFilter("");
+    setPurchaseDateFrom("");
+    setPurchaseDateTo("");
+    setInsuranceDateFilter("");
+    setServiceDateFilter("");
+    setPage(0);
+    window.history.replaceState({}, document.title);
+  };
 
   const parseCsvInput = (value: string): string[] => {
     return value
@@ -1076,6 +1152,10 @@ const Assets = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  useEffect(() => {
+    console.log("Statuses:", assets.map((asset) => asset.status));
+  }, [assets]);
+
   const filteredAssets = useMemo(() => {
     // Normalize a Date to local-midnight so comparisons are day-accurate
     // regardless of whether the source was parsed as UTC or local time.
@@ -1095,6 +1175,8 @@ const Assets = () => {
     const toDate = purchaseDateTo ? parseYMD(purchaseDateTo) : null;
 
     return assets.filter((asset) => {
+      const lifecycleStatus = getLifecycleStatus(asset);
+
       if (debouncedQuery) {
         const text = [asset.name, asset.brand, asset.vendor, asset.category, asset.subcategory]
           .map((value) => String(value || "").toLowerCase())
@@ -1103,8 +1185,20 @@ const Assets = () => {
       }
 
       if (statusFilter) {
-        const manualStatus = String((asset as Asset & { status?: string }).status || "").trim();
-        if (manualStatus !== statusFilter) return false;
+        if (String(asset.status || "").trim().toLowerCase() !== statusFilter.toLowerCase()) return false;
+      }
+
+      if (appliedLifecycleFilter === "inactive" && String(asset.status || "").toLowerCase() !== "inactive") {
+        return false;
+      }
+
+      if (
+        appliedLifecycleFilter
+        && appliedLifecycleFilter !== "all"
+        && appliedLifecycleFilter !== "inactive"
+        && lifecycleStatus !== appliedLifecycleFilter
+      ) {
+        return false;
       }
 
       if (purchaseDateFilter) {
@@ -1148,7 +1242,18 @@ const Assets = () => {
 
       return true;
     });
-  }, [assets, debouncedQuery, statusFilter, warrantyFilter, purchaseDateFilter, purchaseDateFrom, purchaseDateTo, insuranceDateFilter, serviceDateFilter]);
+  }, [
+    assets,
+    debouncedQuery,
+    statusFilter,
+    appliedLifecycleFilter,
+    warrantyFilter,
+    purchaseDateFilter,
+    purchaseDateFrom,
+    purchaseDateTo,
+    insuranceDateFilter,
+    serviceDateFilter,
+  ]);
 
   const editCategoryOptions = useMemo(() => {
     const options = assetCategories.map((item) => item.category);
@@ -1168,13 +1273,14 @@ const Assets = () => {
   }, [assetCategories, editForm.category, editForm.subcategory]);
 
   const statusOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        assets
-          .map((asset) => String((asset as Asset & { status?: string }).status || "").trim())
-          .filter(Boolean)
-      )
-    ).sort((a, b) => a.localeCompare(b));
+    const uniqueStatuses = new Set(
+      assets
+        .map((asset) => String(asset.status || "").trim())
+        .filter(Boolean)
+        .map((status) => normalizeStatusLabel(status))
+    );
+
+    return Array.from(uniqueStatuses).sort((a, b) => a.localeCompare(b));
   }, [assets]);
 
   const paginatedAssets = filteredAssets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -1541,7 +1647,7 @@ const Assets = () => {
                   onChange={(event) => { setStatusFilter(event.target.value); setPage(0); }}
                   sx={{ minWidth: 140 }}
                 >
-                  <MenuItem value="">All statuses</MenuItem>
+                  <MenuItem value="">All</MenuItem>
                   {statusOptions.map((option) => (
                     <MenuItem key={option} value={option}>{option}</MenuItem>
                   ))}
@@ -1610,22 +1716,12 @@ const Assets = () => {
                   <MenuItem value="due_soon">Due soon</MenuItem>
                   <MenuItem value="overdue">Overdue</MenuItem>
                 </TextField>
-                {(searchQuery || statusFilter || warrantyFilter || purchaseDateFilter || insuranceDateFilter || serviceDateFilter) ? (
+                {(searchQuery || statusFilter || appliedLifecycleFilter || warrantyFilter || purchaseDateFilter || insuranceDateFilter || serviceDateFilter) ? (
                   <Button
                     size="small"
                     variant="outlined"
                     color="inherit"
-                    onClick={() => {
-                      setSearchQuery("");
-                      setStatusFilter("");
-                      setWarrantyFilter("");
-                      setPurchaseDateFilter("");
-                      setPurchaseDateFrom("");
-                      setPurchaseDateTo("");
-                      setInsuranceDateFilter("");
-                      setServiceDateFilter("");
-                      setPage(0);
-                    }}
+                    onClick={handleClearFilters}
                     sx={{ whiteSpace: "nowrap", color: "text.secondary", borderColor: "divider" }}
                   >
                     Clear filters
@@ -1640,6 +1736,11 @@ const Assets = () => {
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
                 <Box>
                   <Typography variant="h6" sx={{ lineHeight: 1.3 }}>{viewMode === "grid" ? "Asset Grid" : "Asset Cards"}</Typography>
+                  {(statusFilter || appliedLifecycleFilter) ? (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                      Filters applied
+                    </Typography>
+                  ) : null}
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.25 }}>
                     <Typography variant="body2" color="text.secondary">
                       Total: <strong>{assets.length}</strong>

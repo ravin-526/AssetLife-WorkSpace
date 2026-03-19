@@ -143,12 +143,7 @@ export function getServiceDueDate(asset: Asset): Date | null {
   return safeParseDate(dueDateValue);
 }
 
-export function getAssetStatus(asset: Asset): AssetStatus {
-  const explicit = String((asset as Asset & { status?: string }).status || "").trim().toLowerCase();
-  if (explicit === "inactive") {
-    return "inactive";
-  }
-
+export function getLifecycleStatus(asset: Asset): "active" | "expired" | "dueSoon" {
   const today = toStartOfDay(new Date());
   const dates = [getWarrantyEndDate(asset), getInsuranceEndDate(asset), getServiceDueDate(asset)]
     .filter((value): value is Date => value !== null)
@@ -158,17 +153,27 @@ export function getAssetStatus(asset: Asset): AssetStatus {
     return "active";
   }
 
-  const nearestDate = new Date(Math.min(...dates.map((value) => value.getTime())));
-  if (nearestDate < today) {
+  const nearest = new Date(Math.min(...dates.map((date) => date.getTime())));
+
+  if (nearest < today) {
     return "expired";
   }
 
-  const diffDays = (nearestDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+  const diffDays = (nearest.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
   if (diffDays <= 7) {
     return "dueSoon";
   }
 
   return "active";
+}
+
+export function getAssetStatus(asset: Asset): AssetStatus {
+  const explicit = String((asset as Asset & { status?: string }).status || "").trim().toLowerCase();
+  if (explicit === "inactive") {
+    return "inactive";
+  }
+
+  return getLifecycleStatus(asset);
 }
 
 export function calculateAssetCounts(assets: Asset[]) {
