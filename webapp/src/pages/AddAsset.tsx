@@ -1058,6 +1058,22 @@ const AddAsset = () => {
     return !isExcelRowValid(item) || item.already_added || status === "added" || status === "duplicate" || status === "confirmed";
   };
 
+  const selectableVisibleExcelRows = useMemo(
+    () => filteredExcelSuggestions.filter((item) => !isExcelRowBlocked(item)),
+    [filteredExcelSuggestions]
+  );
+
+  const allVisibleExcelRowsSelected = useMemo(
+    () => selectableVisibleExcelRows.length > 0
+      && selectableVisibleExcelRows.every((item) => selectedExcelRowIds.includes(item.id)),
+    [selectableVisibleExcelRows, selectedExcelRowIds]
+  );
+
+  const someVisibleExcelRowsSelected = useMemo(
+    () => selectableVisibleExcelRows.some((item) => selectedExcelRowIds.includes(item.id)),
+    [selectableVisibleExcelRows, selectedExcelRowIds]
+  );
+
   const toLifecycleDetailsFromPayload = (payload?: AssetLifecyclePayload): Pick<AssetSuggestion, "warranty_details" | "insurance_details" | "service_details"> => {
     return {
       warranty_details: payload?.warranty
@@ -1138,6 +1154,85 @@ const AddAsset = () => {
     return date.toLocaleDateString();
   };
 
+  const getExcelObjectDisplayValue = (value: Record<string, unknown>): string => {
+    const preferredKeys = [
+      "name",
+      "label",
+      "title",
+      "value",
+      "category",
+      "subcategory",
+      "provider",
+      "policy_number",
+      "type",
+      "frequency",
+      "notes",
+      "description",
+    ];
+
+    for (const key of preferredKeys) {
+      const candidate = value[key];
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+      if (typeof candidate === "number" && Number.isFinite(candidate)) {
+        return String(candidate);
+      }
+      if (typeof candidate === "boolean") {
+        return candidate ? "Yes" : "No";
+      }
+    }
+
+    const readableEntries = Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== null && entryValue !== undefined)
+      .map(([, entryValue]) => {
+        if (typeof entryValue === "string") {
+          return entryValue.trim();
+        }
+        if (typeof entryValue === "number" && Number.isFinite(entryValue)) {
+          return String(entryValue);
+        }
+        if (typeof entryValue === "boolean") {
+          return entryValue ? "Yes" : "No";
+        }
+        return "";
+      })
+      .filter(Boolean);
+
+    return readableEntries.join(", ");
+  };
+
+  const getExcelDisplayText = (value: unknown): string => {
+    if (value === null || value === undefined) {
+      return "";
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => getExcelDisplayText(item))
+        .filter(Boolean)
+        .join(", ");
+    }
+
+    if (typeof value === "object") {
+      return getExcelObjectDisplayValue(value as Record<string, unknown>);
+    }
+
+    if (typeof value === "boolean") {
+      return value ? "Yes" : "No";
+    }
+
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? String(value) : "";
+    }
+
+    const text = String(value).trim();
+    if (!text || text === "{}" || text === "[]") {
+      return "";
+    }
+    return text;
+  };
+
   const getExcelCellValue = (item: AssetSuggestion, key: string): string => {
     const warranty = getExcelNestedRecord(item.warranty_details);
     const warrantyReminders = getExcelNestedRecord(warranty?.reminders);
@@ -1152,15 +1247,15 @@ const AddAsset = () => {
       case "warranty_available":
         return getExcelBooleanText(warranty?.available);
       case "warranty_provider":
-        return String(warranty?.provider || "");
+        return getExcelDisplayText(warranty?.provider);
       case "warranty_type":
-        return String(warranty?.type || "");
+        return getExcelDisplayText(warranty?.type);
       case "warranty_start_date":
         return getExcelDateText(warranty?.start_date);
       case "warranty_end_date":
         return getExcelDateText(warranty?.end_date);
       case "warranty_notes":
-        return String(warranty?.notes || "");
+        return getExcelDisplayText(warranty?.notes);
       case "warranty_reminder_30_days":
         return getExcelBooleanText(warrantyReminders?.thirty_days_before);
       case "warranty_reminder_7_days":
@@ -1170,9 +1265,9 @@ const AddAsset = () => {
       case "insurance_available":
         return getExcelBooleanText(insurance?.available);
       case "insurance_provider":
-        return String(insurance?.provider || "");
+        return getExcelDisplayText(insurance?.provider);
       case "insurance_policy_number":
-        return String(insurance?.policy_number || "");
+        return getExcelDisplayText(insurance?.policy_number);
       case "insurance_start_date":
         return getExcelDateText(insurance?.start_date);
       case "insurance_expiry_date":
@@ -1182,7 +1277,7 @@ const AddAsset = () => {
         return premium === undefined ? "" : String(premium);
       }
       case "insurance_coverage_notes":
-        return String(insurance?.coverage_notes || insurance?.notes || "");
+        return getExcelDisplayText(insurance?.coverage_notes || insurance?.notes);
       case "insurance_reminder_45_days":
         return getExcelBooleanText(insuranceReminders?.forty_five_days_before);
       case "insurance_reminder_15_days":
@@ -1190,7 +1285,7 @@ const AddAsset = () => {
       case "service_required":
         return getExcelBooleanText(service?.required);
       case "service_frequency":
-        return String(service?.frequency || "");
+        return getExcelDisplayText(service?.frequency);
       case "service_custom_interval_days": {
         const interval = getExcelNumberValue(service?.custom_interval_days);
         return interval === undefined ? "" : String(interval);
@@ -1202,7 +1297,7 @@ const AddAsset = () => {
       case "price":
         return item.price === undefined || item.price === null ? "" : String(item.price);
       default:
-        return String((item as unknown as Record<string, unknown>)[key] || "");
+        return getExcelDisplayText((item as unknown as Record<string, unknown>)[key]);
     }
   };
 
@@ -2066,97 +2161,89 @@ const AddAsset = () => {
                               borderRadius: 1,
                             }}
                           >
-                            {(() => {
-                              const selectableVisibleRows = filteredExcelSuggestions.filter((item) => !isExcelRowBlocked(item));
-                              const allVisibleSelected = selectableVisibleRows.length > 0
-                                && selectableVisibleRows.every((item) => selectedExcelRowIds.includes(item.id));
-                              const someVisibleSelected = selectableVisibleRows.some((item) => selectedExcelRowIds.includes(item.id));
-                              return (
-                                <Box
-                                  sx={{
-                                      display: "grid",
-                                      gridTemplateColumns: `76px ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" ")} ${FROZEN_COLUMN_WIDTHS.error}px ${FROZEN_COLUMN_WIDTHS.status}px ${FROZEN_COLUMN_WIDTHS.actions}px`,
-                                      columnGap: 0,
-                                      px: 2,
-                                      py: 1.25,
-                                      bgcolor: "grey.100",
-                                      borderBottom: 1,
-                                      borderColor: "divider",
-                                      position: "sticky",
-                                      top: 0,
-                                      zIndex: 30,
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                      <Checkbox
-                                        size="small"
-                                        checked={allVisibleSelected}
-                                        indeterminate={!allVisibleSelected && someVisibleSelected}
-                                        onChange={(event) => {
-                                          const checked = event.target.checked;
-                                          setSelectedExcelRowIds((prev) => {
-                                            const pool = new Set(prev);
-                                            for (const row of selectableVisibleRows) {
-                                              if (checked) {
-                                                pool.add(row.id);
-                                              } else {
-                                                pool.delete(row.id);
-                                              }
-                                            }
-                                            return Array.from(pool);
-                                          });
-                                        }}
-                                        disabled={!selectableVisibleRows.length}
-                                      />
-                                    </Box>
-                                    {EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => (
-                                      <Typography key={column.key} variant="subtitle2" noWrap sx={{ px: 1 }}>
-                                        {column.label}
-                                      </Typography>
-                                    ))}
-                                    <Typography
-                                      variant="subtitle2"
-                                      sx={{
-                                        position: "sticky",
-                                        right: FROZEN_COLUMN_WIDTHS.status + FROZEN_COLUMN_WIDTHS.actions,
-                                        zIndex: 40,
-                                        bgcolor: "grey.100",
-                                        px: 1,
-                                        textAlign: "left",
-                                      }}
-                                    >
-                                      Error
-                                    </Typography>
-                                    <Typography
-                                      variant="subtitle2"
-                                      sx={{
-                                        position: "sticky",
-                                        right: FROZEN_COLUMN_WIDTHS.actions,
-                                        zIndex: 40,
-                                        bgcolor: "grey.100",
-                                        px: 1,
-                                        textAlign: "left",
-                                      }}
-                                    >
-                                      Status
-                                    </Typography>
-                                    <Typography
-                                      variant="subtitle2"
-                                      sx={{
-                                        position: "sticky",
-                                        right: 0,
-                                        zIndex: 40,
-                                        bgcolor: "grey.100",
-                                        px: 1,
-                                        textAlign: "left",
-                                      }}
-                                    >
-                                      Actions
-                                    </Typography>
-                                  </Box>
-                                );
-                              })()}
+                            <Box
+                              sx={{
+                                display: "grid",
+                                gridTemplateColumns: `76px ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" ")} ${FROZEN_COLUMN_WIDTHS.error}px ${FROZEN_COLUMN_WIDTHS.status}px ${FROZEN_COLUMN_WIDTHS.actions}px`,
+                                columnGap: 0,
+                                px: 2,
+                                py: 1.25,
+                                bgcolor: "grey.100",
+                                borderBottom: 1,
+                                borderColor: "divider",
+                                position: "sticky",
+                                top: 0,
+                                zIndex: 30,
+                                alignItems: "center",
+                              }}
+                            >
+                              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <Checkbox
+                                  size="small"
+                                  checked={allVisibleExcelRowsSelected}
+                                  indeterminate={!allVisibleExcelRowsSelected && someVisibleExcelRowsSelected}
+                                  onChange={(event) => {
+                                    const checked = event.target.checked;
+                                    setSelectedExcelRowIds((prev) => {
+                                      const pool = new Set(prev);
+                                      for (const row of selectableVisibleExcelRows) {
+                                        if (checked) {
+                                          pool.add(row.id);
+                                        } else {
+                                          pool.delete(row.id);
+                                        }
+                                      }
+                                      return Array.from(pool);
+                                    });
+                                  }}
+                                  disabled={!selectableVisibleExcelRows.length}
+                                />
+                              </Box>
+                              {EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => (
+                                <Typography key={column.key} variant="subtitle2" noWrap sx={{ px: 1 }}>
+                                  {column.label}
+                                </Typography>
+                              ))}
+                              <Typography
+                                variant="subtitle2"
+                                sx={{
+                                  position: "sticky",
+                                  right: FROZEN_COLUMN_WIDTHS.status + FROZEN_COLUMN_WIDTHS.actions,
+                                  zIndex: 40,
+                                  bgcolor: "grey.100",
+                                  px: 1,
+                                  textAlign: "left",
+                                }}
+                              >
+                                Error
+                              </Typography>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{
+                                  position: "sticky",
+                                  right: FROZEN_COLUMN_WIDTHS.actions,
+                                  zIndex: 40,
+                                  bgcolor: "grey.100",
+                                  px: 1,
+                                  textAlign: "left",
+                                }}
+                              >
+                                Status
+                              </Typography>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{
+                                  position: "sticky",
+                                  right: 0,
+                                  zIndex: 40,
+                                  bgcolor: "grey.100",
+                                  px: 1,
+                                  textAlign: "left",
+                                }}
+                              >
+                                Actions
+                              </Typography>
+                            </Box>
 
                               {filteredExcelSuggestions.map((item) => {
                                 const statusMeta = getExcelRowStatusMeta(item);
@@ -2287,7 +2374,6 @@ const AddAsset = () => {
                                   </Box>
                                 );
                               })}
-                            })()}
                           </Paper>
                         ) : (
                           <Typography variant="body2" color="text.secondary">
