@@ -88,12 +88,14 @@ const Assets = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [warrantyFilter, setWarrantyFilter] = useState("");
   const [purchaseDateFilter, setPurchaseDateFilter] = useState("");
   const [purchaseDateFrom, setPurchaseDateFrom] = useState("");
   const [purchaseDateTo, setPurchaseDateTo] = useState("");
   const [insuranceDateFilter, setInsuranceDateFilter] = useState("");
   const [serviceDateFilter, setServiceDateFilter] = useState("");
+  const [sourceSortDirection, setSourceSortDirection] = useState<"none" | "asc" | "desc">("none");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
@@ -221,15 +223,22 @@ const Assets = () => {
     setPage(0);
   };
 
+  const handleSourceFilterChange = (event: SelectChangeEvent<string[]>) => {
+    setSelectedSources(event.target.value as string[]);
+    setPage(0);
+  };
+
   const handleClearFilters = () => {
     setSearchQuery("");
     setSelectedStatuses([]);
+    setSelectedSources([]);
     setWarrantyFilter("");
     setPurchaseDateFilter("");
     setPurchaseDateFrom("");
     setPurchaseDateTo("");
     setInsuranceDateFilter("");
     setServiceDateFilter("");
+    setSourceSortDirection("none");
     setPage(0);
     window.history.replaceState({}, document.title);
   };
@@ -301,6 +310,7 @@ const Assets = () => {
       warranty_details: warrantyDetails,
       insurance_details: insuranceDetails,
       service_details: serviceDetails,
+      invoice_attachment_path: asset.invoice_attachment_path ?? undefined,
       created_at: asset.created_at,
     };
   };
@@ -712,6 +722,26 @@ const Assets = () => {
       .split(" ")
       .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
       .join(" ");
+  };
+
+  const getAssetSourceKey = (asset: Asset) => {
+    const normalized = String(asset.source || "manual").trim().toLowerCase();
+    if (normalized === "email_sync") return "email_sync";
+    if (normalized === "excel_upload") return "excel_upload";
+    if (normalized === "manual") return "manual";
+    if (normalized === "invoice_upload") return "invoice_upload";
+    if (normalized === "qr_scan") return "qr_scan";
+    return normalized;
+  };
+
+  const getAssetSourceLabel = (asset: Asset) => {
+    const source = getAssetSourceKey(asset);
+    if (source === "email_sync") return "Email";
+    if (source === "excel_upload") return "Excel Upload";
+    if (source === "manual") return "Manual";
+    if (source === "invoice_upload") return "Invoice Upload";
+    if (source === "qr_scan") return "Scan";
+    return "Manual";
   };
 
   const getStatusChipColor = (label: string): "success" | "warning" | "default" | "error" => {
@@ -1134,7 +1164,7 @@ const Assets = () => {
 
     return assets.filter((asset) => {
       if (debouncedQuery) {
-        const text = [asset.name, asset.brand, asset.vendor, asset.category, asset.subcategory]
+        const text = [asset.name, asset.brand, asset.vendor, asset.category, asset.subcategory, getAssetSourceLabel(asset)]
           .map((value) => String(value || "").toLowerCase())
           .join(" ");
         if (!text.includes(debouncedQuery)) return false;
@@ -1143,6 +1173,10 @@ const Assets = () => {
       if (selectedStatuses.length > 0) {
         // Compare derived DB-mapped label against selected DB status names
         if (!selectedStatuses.includes(getAssetStatusLabel(asset))) return false;
+      }
+
+      if (selectedSources.length > 0) {
+        if (!selectedSources.includes(getAssetSourceKey(asset))) return false;
       }
 
       if (purchaseDateFilter) {
@@ -1190,6 +1224,7 @@ const Assets = () => {
     assets,
     debouncedQuery,
     selectedStatuses,
+    selectedSources,
     warrantyFilter,
     purchaseDateFilter,
     purchaseDateFrom,
@@ -1197,6 +1232,19 @@ const Assets = () => {
     insuranceDateFilter,
     serviceDateFilter,
   ]);
+
+  const sortedAssets = useMemo(() => {
+    if (sourceSortDirection === "none") {
+      return filteredAssets;
+    }
+
+    const direction = sourceSortDirection === "asc" ? 1 : -1;
+    return [...filteredAssets].sort((left, right) => {
+      const leftLabel = getAssetSourceLabel(left);
+      const rightLabel = getAssetSourceLabel(right);
+      return leftLabel.localeCompare(rightLabel) * direction;
+    });
+  }, [filteredAssets, sourceSortDirection]);
 
   const editCategoryOptions = useMemo(() => {
     const options = assetCategories.map((item) => item.category);
@@ -1215,7 +1263,7 @@ const Assets = () => {
     return options;
   }, [assetCategories, editForm.category, editForm.subcategory]);
 
-  const paginatedAssets = filteredAssets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const paginatedAssets = sortedAssets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const formatSuggestionPrice = (price?: number) => {
     if (price === null || price === undefined) {
@@ -1454,7 +1502,7 @@ const Assets = () => {
 
   const handleExport = (format: "csv" | "excel") => {
     setExporting(true);
-    const rows = filteredAssets.map((asset) => {
+    const rows = sortedAssets.map((asset) => {
       const statusLabel = getAssetComputedStatusLabel(asset);
       const warranty = getWarrantyPresentation(asset);
       const insurance = getInsurancePresentation(asset);
@@ -1465,6 +1513,7 @@ const Assets = () => {
           asset.name || "-",
           formatJoinedValue(asset.category, asset.subcategory),
           formatJoinedValue(asset.brand, asset.vendor),
+          getAssetSourceLabel(asset),
           formatPurchaseExportValue(asset.purchase_date),
           statusLabel,
           formatLifecycleExportValue(warranty.dateText, warranty.metaText),
@@ -1478,6 +1527,7 @@ const Assets = () => {
         asset.name || "-",
         asset.category || "-",
         asset.vendor || "-",
+        getAssetSourceLabel(asset),
         formatPurchaseExportValue(asset.purchase_date),
         formatLifecycleExportValue(warranty.dateText, warranty.metaText),
         formatLifecycleExportValue(insurance.dateText, insurance.metaText),
@@ -1485,8 +1535,8 @@ const Assets = () => {
       ];
     });
     const headers = viewMode === "card"
-      ? [["Asset Name", "Category / Subcategory", "Brand / Vendor", "Purchase Date", "Status", "Warranty", "Insurance", "Service"]]
-      : [["Status", "Asset Name", "Category", "Vendor", "Purchase Date", "Warranty Expiry", "Insurance Expiry", "Next Service Date"]];
+      ? [["Asset Name", "Category / Subcategory", "Brand / Vendor", "Source", "Purchase Date", "Status", "Warranty", "Insurance", "Service"]]
+      : [["Status", "Asset Name", "Category", "Vendor", "Source", "Purchase Date", "Warranty Expiry", "Insurance Expiry", "Next Service Date"]];
     if (format === "csv") {
       const csv = [...headers, ...rows]
         .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
@@ -1593,6 +1643,37 @@ const Assets = () => {
                     ))}
                   </Select>
                 </FormControl>
+                <FormControl size="small" sx={{ minWidth: 220 }}>
+                  <InputLabel id="source-filter-label">Source</InputLabel>
+                  <Select
+                    labelId="source-filter-label"
+                    multiple
+                    value={selectedSources}
+                    onChange={handleSourceFilterChange}
+                    input={<OutlinedInput label="Source" />}
+                    renderValue={(selected) => selected.map((value) => {
+                      if (value === "email_sync") return "Email";
+                      if (value === "excel_upload") return "Excel Upload";
+                      if (value === "manual") return "Manual";
+                      if (value === "invoice_upload") return "Invoice Upload";
+                      if (value === "qr_scan") return "Scan";
+                      return value;
+                    }).join(", ")}
+                  >
+                    {[
+                      { value: "email_sync", label: "Email" },
+                      { value: "excel_upload", label: "Excel Upload" },
+                      { value: "manual", label: "Manual" },
+                      { value: "invoice_upload", label: "Invoice Upload" },
+                      { value: "qr_scan", label: "Scan" },
+                    ].map((source) => (
+                      <MenuItem key={source.value} value={source.value} sx={{ py: 0.5 }}>
+                        <Checkbox checked={selectedSources.indexOf(source.value) > -1} size="small" />
+                        <ListItemText primary={source.label} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
                 <TextField size="small" select label="Purchase Date" value={purchaseDateFilter}
                   onChange={(event) => {
                     setPurchaseDateFilter(event.target.value);
@@ -1657,7 +1738,7 @@ const Assets = () => {
                   <MenuItem value="due_soon">Due soon</MenuItem>
                   <MenuItem value="overdue">Overdue</MenuItem>
                 </TextField>
-                {(searchQuery || selectedStatuses.length > 0 || warrantyFilter || purchaseDateFilter || insuranceDateFilter || serviceDateFilter) ? (
+                {(searchQuery || selectedStatuses.length > 0 || selectedSources.length > 0 || warrantyFilter || purchaseDateFilter || insuranceDateFilter || serviceDateFilter) ? (
                   <Button
                     size="small"
                     variant="outlined"
@@ -1687,8 +1768,8 @@ const Assets = () => {
                       Total: <strong>{assets.length}</strong>
                     </Typography>
                     <Typography variant="body2" color="text.disabled">|</Typography>
-                    <Typography variant="body2" color={filteredAssets.length < assets.length ? "primary" : "text.secondary"}>
-                      Filtered: <strong>{filteredAssets.length}</strong>
+                    <Typography variant="body2" color={sortedAssets.length < assets.length ? "primary" : "text.secondary"}>
+                      Filtered: <strong>{sortedAssets.length}</strong>
                     </Typography>
                   </Box>
                 </Box>
@@ -1737,11 +1818,11 @@ const Assets = () => {
                 <>
                   {viewMode === "grid" ? (
                     <Paper variant="outlined" sx={{ height: 500, overflowY: "auto", overflowX: "auto", minHeight: 0, position: "relative" }}>
-                      <Box sx={{ minWidth: 1450 }}>
+                      <Box sx={{ minWidth: 1600 }}>
                         <Box
                           sx={{
                             display: "grid",
-                            gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
+                            gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
                             columnGap: 2,
                             py: 1.25,
                             bgcolor: "grey.100",
@@ -1770,6 +1851,7 @@ const Assets = () => {
                           <Typography variant="subtitle2">Asset Name</Typography>
                           <Typography variant="subtitle2">Category</Typography>
                           <Typography variant="subtitle2">Vendor</Typography>
+                          <Typography variant="subtitle2">Source</Typography>
                           <Typography variant="subtitle2">Purchase Date</Typography>
                           <Typography variant="subtitle2">Warranty Expiry</Typography>
                           <Typography variant="subtitle2">Insurance Expiry</Typography>
@@ -1804,7 +1886,7 @@ const Assets = () => {
                             key={asset.id}
                             sx={{
                               display: "grid",
-                              gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
+                              gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
                               columnGap: 2,
                               alignItems: "stretch",
                               py: 1.1,
@@ -1830,6 +1912,7 @@ const Assets = () => {
                             <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.name || "-"}</Typography>
                             <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.category || "-"}</Typography>
                             <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.vendor || "-"}</Typography>
+                            <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{getAssetSourceLabel(asset)}</Typography>
                             <Typography variant="body2" sx={{ display: "flex", alignItems: "center" }}>{asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : "-"}</Typography>
                             <Tooltip title={warranty.tooltip}>
                               <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -1913,7 +1996,7 @@ const Assets = () => {
                           },
                         }}
                       >
-                        {filteredAssets.map((asset) => {
+                        {sortedAssets.map((asset) => {
                           const statusLabel = getAssetComputedStatusLabel(asset);
                           const warranty = getWarrantyPresentation(asset);
                           const insurance = getInsurancePresentation(asset);
@@ -1955,6 +2038,10 @@ const Assets = () => {
                                 <Box>
                                   <Typography variant="caption" color="text.disabled" sx={{ display: "block", lineHeight: 1.2 }}>Brand / Vendor</Typography>
                                   <Typography variant="caption">{formatJoinedValue(asset.brand, asset.vendor)}</Typography>
+                                </Box>
+                                <Box>
+                                  <Typography variant="caption" color="text.disabled" sx={{ display: "block", lineHeight: 1.2 }}>Source</Typography>
+                                  <Typography variant="caption">{getAssetSourceLabel(asset)}</Typography>
                                 </Box>
                                 <Box>
                                   <Typography variant="caption" color="text.disabled" sx={{ display: "block", lineHeight: 1.2 }}>Purchase Date</Typography>
@@ -2011,7 +2098,7 @@ const Assets = () => {
                     >
                       <Typography variant="body2" color="text.secondary" sx={{ pl: 2, pr: 1 }}>
                         {(() => {
-                          const total = filteredAssets.length;
+                          const total = sortedAssets.length;
                           if (total === 0) {
                             return "Showing 0-0 of 0";
                           }
@@ -2022,7 +2109,7 @@ const Assets = () => {
                       </Typography>
                       <TablePagination
                         component="div"
-                        count={filteredAssets.length}
+                        count={sortedAssets.length}
                         page={page}
                         onPageChange={(_, nextPage) => setPage(nextPage)}
                         rowsPerPage={rowsPerPage}

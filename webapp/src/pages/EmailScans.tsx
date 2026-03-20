@@ -138,7 +138,7 @@ const EmailScans = () => {
         location: payload.location,
         assigned_user: payload.assigned_user,
         lifecycle_info: payload.lifecycle_info,
-        source: "gmail",
+        source: "email_sync",
         suggestion_id: selectedSuggestion.id,
       });
       const reminderCount = Number(createdAsset.auto_reminders_created || 0);

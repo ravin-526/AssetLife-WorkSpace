@@ -240,14 +240,24 @@ const AddAsset = () => {
 
   const isExcelRowAddItemLoading = (rowId: string) => Boolean(excelRowAddLoading[rowId]);
 
-  const buildManualSuggestion = (): AssetSuggestion => {
+  const getCreationSourceForMethod = (method: AddAssetMethod): "manual" | "invoice_upload" | "qr_scan" => {
+    if (method === "invoice_upload") {
+      return "invoice_upload";
+    }
+    if (method === "barcode_qr") {
+      return "qr_scan";
+    }
+    return "manual";
+  };
+
+  const buildManualSuggestion = (method: AddAssetMethod = "manual_entry"): AssetSuggestion => {
     const now = new Date().toISOString();
     const seed = `manual-${Date.now()}`;
     return {
       id: seed,
       product_name: "",
       quantity: 1,
-      source: "manual",
+      source: getCreationSourceForMethod(method),
       status: "new",
       email_message_id: seed,
       already_added: false,
@@ -363,7 +373,7 @@ const AddAsset = () => {
           if (String(prev?.source || "").toLowerCase() === "manual") {
             return prev;
           }
-          return buildManualSuggestion();
+          return buildManualSuggestion(method);
         });
       } else if (String(selectedSuggestion?.source || "").toLowerCase() === "manual") {
         setSelectedSuggestion(null);
@@ -645,8 +655,19 @@ const AddAsset = () => {
     }
 
     const sourceType = String(selectedSuggestion.source || "").toLowerCase();
-    const isExcelSuggestion = sourceType === "excel";
-    const isManualSuggestion = sourceType === "manual";
+    const isExcelSuggestion = sourceType === "excel" || sourceType === "excel_upload";
+    const isMethodDrivenManualFlow = selectedMethod === "manual_entry" || selectedMethod === "invoice_upload" || selectedMethod === "barcode_qr";
+    const isManualSuggestion = sourceType === "manual" || sourceType === "manual_entry" || sourceType === "invoice_upload" || sourceType === "qr_scan" || isMethodDrivenManualFlow;
+
+    const createSource = isExcelSuggestion
+      ? "excel_upload"
+      : selectedMethod === "invoice_upload"
+        ? "invoice_upload"
+        : selectedMethod === "barcode_qr"
+          ? "qr_scan"
+          : isManualSuggestion
+            ? "manual"
+            : "email_sync";
 
     try {
       setSaveLoading(true);
@@ -668,7 +689,7 @@ const AddAsset = () => {
         location: payload.location,
         assigned_user: payload.assigned_user,
         lifecycle_info: payload.lifecycle_info,
-        source: isManualSuggestion ? "manual" : isExcelSuggestion ? "excel" : "gmail",
+        source: createSource,
         suggestion_id: isManualSuggestion || isExcelSuggestion ? undefined : selectedSuggestion.id,
       });
 
@@ -904,7 +925,7 @@ const AddAsset = () => {
         location: suggestion.location,
         assigned_user: suggestion.assigned_user,
         lifecycle_info: getLifecyclePayloadFromExcelSuggestion(suggestion),
-        source: "excel",
+        source: "excel_upload",
       });
 
       setExcelUploadResult((prev) => {
@@ -1396,7 +1417,7 @@ const AddAsset = () => {
             location: item.location,
             assigned_user: item.assigned_user,
             lifecycle_info: getLifecyclePayloadFromExcelSuggestion(item),
-            source: "excel",
+            source: "excel_upload",
           });
           createdAssetBySuggestionId[item.id] = created.id;
           addedCount += 1;
@@ -1554,13 +1575,13 @@ const AddAsset = () => {
     },
   };
 
-  const handleStartManualEntry = () => {
+  const handleStartManualEntry = (method: AddAssetMethod = selectedMethod) => {
     setError("");
     setMessage("");
     setSelectedAssetId(null);
     setUploadedDocuments([]);
     setParsingMessage("");
-    setSelectedSuggestion(buildManualSuggestion());
+    setSelectedSuggestion(buildManualSuggestion(method));
   };
 
   const handleManualAddAnother = () => {
@@ -1585,7 +1606,7 @@ const AddAsset = () => {
     }
 
     if (method === "manual_entry") {
-      handleStartManualEntry();
+      handleStartManualEntry(method);
       return;
     }
 

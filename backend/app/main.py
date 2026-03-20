@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logger import app_logger, configure_logging
+from app.core.status_master import ensure_default_statuses
 from app.db.indexes import ensure_indexes
 from app.db.mongo import get_mongo_manager
 from app.routes.asset_suggestions import router as asset_suggestions_router
@@ -14,6 +15,7 @@ from app.routes.email_scans import router as email_scans_router
 from app.routes.gmail_integration import router as gmail_integration_router
 from app.routes.individual import router as individual_router
 from app.routes.reminders import router as reminders_router
+from app.routes.statuses import router as statuses_router
 from app.routes.testing import router as testing_router
 from app.routes.user import router as user_router
 
@@ -43,6 +45,7 @@ app.include_router(gmail_integration_router)
 app.include_router(email_scans_router)
 app.include_router(asset_suggestions_router)
 app.include_router(assets_router)
+app.include_router(statuses_router)
 app.include_router(categories_router)
 app.include_router(reminders_router)
 app.include_router(testing_router)
@@ -52,7 +55,9 @@ app.include_router(testing_router)
 async def startup_event() -> None:
     manager = get_mongo_manager()
     await manager.connect()
-    await ensure_indexes(manager.get_database())
+    db = manager.get_database()
+    await ensure_indexes(db)
+    await ensure_default_statuses(db)
     app_logger.info("AssetLife API started")
 
 

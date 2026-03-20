@@ -381,7 +381,7 @@ export const createAsset = async (payload: {
   location?: string;
   assigned_user?: string;
   lifecycle_info?: AssetLifecyclePayload;
-  source?: string;
+  source?: "email_sync" | "invoice_upload" | "excel_upload" | "qr_scan" | "manual";
   suggestion_id?: string;
 }): Promise<Asset> => {
   const response = await api.post<Asset>("/api/assets", payload);

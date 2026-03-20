@@ -171,6 +171,20 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         await db["assets"].create_index("subcategory")
         app_logger.info("Ensured indexes: assets.user_id, assets.category, assets.subcategory")
 
+    async def assets_source_migration() -> None:
+        result = await db["assets"].update_many(
+            {
+                "$or": [
+                    {"source": {"$exists": False}},
+                    {"source": None},
+                    {"source": ""},
+                ]
+            },
+            {"$set": {"source": "manual"}},
+        )
+        if result.modified_count:
+            app_logger.info("Migrated assets missing source field: %s", result.modified_count)
+
     async def reminders_indexes() -> None:
         await db["reminders"].create_index([("user_id", 1), ("reminder_date", 1)])
         app_logger.info("Ensured index: reminders.(user_id,reminder_date)")
@@ -188,9 +202,15 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         await db["asset_suggestions"].create_index("email_message_id")
         app_logger.info("Ensured indexes: asset_suggestions.(user_id,status), asset_suggestions.email_message_id")
 
+    async def status_master_indexes() -> None:
+        await db["status_master"].create_index("name", unique=True)
+        app_logger.info("Ensured index: status_master.name (unique)")
+
     await _safe_step("categories", categories_cleanup_and_index)
     await _safe_step("subcategories", subcategories_cleanup_and_index)
     await _safe_step("assets", assets_indexes)
+    await _safe_step("assets_source_migration", assets_source_migration)
     await _safe_step("reminders", reminders_indexes)
     await _safe_step("individual_users", individual_users_cleanup_and_index)
     await _safe_step("asset_suggestions", asset_suggestions_indexes)
+    await _safe_step("status_master", status_master_indexes)

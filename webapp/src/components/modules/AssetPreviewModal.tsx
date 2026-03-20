@@ -39,10 +39,22 @@ import {
   SuggestionEmailDetails,
   AssetSuggestion,
   UploadedAssetDocument,
+  fetchAssetDocumentBlob,
+  fetchAssetInvoiceBlob,
   getSuggestionEmailDetails,
   getAssetCategories,
   fetchSuggestionAttachmentBlob,
 } from "../../services/gmail.ts";
+
+type UnifiedAttachment = {
+  id: string;
+  file_url: string;
+  file_name: string;
+  mime_type: string;
+  kind: "invoice" | "document";
+  document_id?: string;
+  asset_id?: string;
+};
 
 type AssetPreviewModalProps = {
   open: boolean;
@@ -108,11 +120,14 @@ const AssetPreviewModal = ({
   onClose,
   onSave,
 }: AssetPreviewModalProps) => {
+  const [attachments, setAttachments] = useState<UnifiedAttachment[]>([]);
+  const [selectedAttachment, setSelectedAttachment] = useState<UnifiedAttachment | null>(null);
   const [attachmentLoading, setAttachmentLoading] = useState(false);
   const [attachmentDownloadLoading, setAttachmentDownloadLoading] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
   const [attachmentMimeType, setAttachmentMimeType] = useState<string>("");
+  const [selectedAttachmentId, setSelectedAttachmentId] = useState<string>("");
   const [attachmentRenderError, setAttachmentRenderError] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<"attachment" | "email">("attachment");
   const [emailDetails, setEmailDetails] = useState<SuggestionEmailDetails | null>(null);
@@ -188,21 +203,6 @@ const AssetPreviewModal = ({
   const suggestion = useMemo(() => {
     return suggestions?.[currentIndex] ?? suggestionProp ?? null;
   }, [currentIndex, suggestionProp, suggestions]);
-
-  useEffect(() => {
-    if (!open || !suggestion) {
-      return;
-    }
-    console.log("Asset in popup:", suggestion);
-  }, [open, suggestion]);
-
-  useEffect(() => {
-    console.log("Attachment:", attachmentUrl);
-  }, [attachmentUrl]);
-
-  useEffect(() => {
-    console.log("Loading:", attachmentLoading);
-  }, [attachmentLoading]);
 
   const getRecordValue = (record: Record<string, unknown>, keys: string[]): string | undefined => {
     for (const key of keys) {
@@ -280,8 +280,12 @@ const AssetPreviewModal = ({
     return isPdfFile(mimeType) || isImageFile(mimeType);
   };
 
-  const isValidPreviewBlob = (blob: Blob): boolean => {
-    return blob.size > 0 && (blob.type === "application/pdf" || blob.type.startsWith("image/"));
+  const isValidPreviewBlob = (blob: Blob, resolvedMimeType?: string): boolean => {
+    if (blob.size === 0) {
+      return false;
+    }
+    const effectiveType = blob.type || resolvedMimeType || "";
+    return effectiveType === "application/pdf" || effectiveType.startsWith("image/");
   };
 
   const standardControlHeight = 36;
@@ -330,6 +334,27 @@ const AssetPreviewModal = ({
     return `${size} B`;
   };
 
+  const deriveMimeTypeFromName = (fileName: string) => {
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    if (lower.endsWith(".bmp")) return "image/bmp";
+    if (lower.endsWith(".svg")) return "image/svg+xml";
+    return "application/octet-stream";
+  };
+
+  const getNoAttachmentMessage = () => {
+    const source = String((suggestion as unknown as Record<string, unknown>)?.source || "").trim().toLowerCase();
+    if (source === "excel_upload") return "No preview available for Excel upload";
+    if (source === "manual") return "No documents available";
+    if (source === "email_sync") return "Attachment not available";
+    if (source === "invoice_upload") return "Invoice not available";
+    return "No documents available";
+  };
+
   useEffect(() => {
     if (!open) {
       return;
@@ -339,6 +364,12 @@ const AssetPreviewModal = ({
     setEmailDetailsError("");
     setEmailDetailsLoading(false);
   }, [open, suggestion?.id]);
+
+  useEffect(() => {
+    if (disableAttachmentAndEmailPreview && rightPanelTab === "email") {
+      setRightPanelTab("attachment");
+    }
+  }, [disableAttachmentAndEmailPreview, rightPanelTab]);
 
   useEffect(() => {
     setDisplayedParsingMessage(parsingMessage ?? "");
@@ -536,7 +567,7 @@ const AssetPreviewModal = ({
     let isMounted = true;
 
     const loadAttachmentPreview = async () => {
-      if (disableAttachmentAndEmailPreview || !open || rightPanelTab !== "attachment" || !suggestion?.id) {
+      if (!open || rightPanelTab !== "attachment") {
         setAttachmentLoading(false);
         setAttachmentUrl((prev) => {
           if (prev) {
@@ -549,13 +580,7 @@ const AssetPreviewModal = ({
         return;
       }
 
-      const hasAttachmentCandidate = Boolean(
-        suggestion?.attachment_filename
-        || suggestion?.attachment_mime_type
-        || suggestion?.invoice_attachment_path
-      );
-
-      if (!hasAttachmentCandidate) {
+      if (!selectedAttachment) {
         setAttachmentLoading(false);
         setAttachmentUrl((prev) => {
           if (prev) {
@@ -572,14 +597,34 @@ const AssetPreviewModal = ({
         setAttachmentLoading(true);
         setAttachmentError("");
         setAttachmentRenderError(false);
-        const blob = await fetchSuggestionAttachmentBlob(suggestion.id);
+
+        let blob: Blob;
+        if (selectedAttachment?.kind === "document" && selectedAttachment?.document_id) {
+          const assetIdFromUrl = (selectedAttachment?.file_url || "").match(/\/api\/assets\/([^/]+)\/documents\//)?.[1] || selectedAttachment?.asset_id || suggestion?.id;
+          if (!assetIdFromUrl) {
+            throw new Error("Asset id is missing for document preview");
+          }
+          blob = await fetchAssetDocumentBlob(assetIdFromUrl, selectedAttachment.document_id);
+        } else {
+          const source = String((suggestion as unknown as Record<string, unknown>)?.source || "").trim().toLowerCase();
+          if (source === "email_sync" && suggestion?.id && suggestion?.attachment_filename) {
+            blob = await fetchSuggestionAttachmentBlob(suggestion.id);
+          } else {
+            const assetId = selectedAttachment?.asset_id || suggestion?.id;
+            if (!assetId) {
+              throw new Error("Asset id is missing for invoice preview");
+            }
+            blob = await fetchAssetInvoiceBlob(assetId);
+          }
+        }
+
         if (!isMounted) {
           return;
         }
 
-        const resolvedMimeType = blob.type || suggestion.attachment_mime_type || "";
-        const canPreview = isPreviewableAttachment(suggestion?.attachment_filename, resolvedMimeType);
-        const hasValidBlob = isValidPreviewBlob(blob);
+        const resolvedMimeType = blob.type || selectedAttachment?.mime_type || "";
+        const canPreview = isPreviewableAttachment(selectedAttachment?.file_name || "Attachment", resolvedMimeType);
+        const hasValidBlob = isValidPreviewBlob(blob, resolvedMimeType);
         if (!hasValidBlob || !canPreview) {
           setAttachmentUrl((prev) => {
             if (prev) {
@@ -626,13 +671,10 @@ const AssetPreviewModal = ({
       isMounted = false;
     };
   }, [
-    disableAttachmentAndEmailPreview,
     open,
     rightPanelTab,
-    suggestion?.attachment_filename,
-    suggestion?.attachment_mime_type,
-    suggestion?.id,
-    suggestion?.invoice_attachment_path,
+    selectedAttachment,
+    suggestion,
   ]);
 
   useEffect(() => {
@@ -704,29 +746,94 @@ const AssetPreviewModal = ({
     });
   }, [locallyDeletedDocumentIds, uploadedDocuments]);
 
+  const computedAttachments = useMemo<UnifiedAttachment[]>(() => {
+    const result: UnifiedAttachment[] = [];
+    const sourceRecord = suggestionRecord || {};
+    const invoicePath = getRecordValue(sourceRecord, ["invoice_path", "invoice_attachment_path"]);
+    const invoiceFileName = getRecordValue(sourceRecord, ["attachment_filename", "invoice_filename"])
+      || (invoicePath ? invoicePath.split("/").pop() : undefined)
+      || "Invoice";
+    const invoiceMimeType = getRecordValue(sourceRecord, ["attachment_mime_type", "mime_type"])
+      || deriveMimeTypeFromName(invoiceFileName);
+
+    if (invoicePath || suggestion?.attachment_filename || suggestion?.attachment_mime_type) {
+      result.push({
+        id: `invoice-${suggestion?.id || "unknown"}`,
+        file_url: "",
+        file_name: invoiceFileName,
+        mime_type: invoiceMimeType,
+        kind: "invoice",
+        asset_id: suggestion?.id,
+      });
+    }
+
+    visibleUploadedDocuments.forEach((document) => {
+      result.push({
+        id: `document-${document.document_id}`,
+        file_url: document.file_url,
+        file_name: document.file_name,
+        mime_type: deriveMimeTypeFromName(document.file_name || ""),
+        kind: "document",
+        document_id: document.document_id,
+        asset_id: suggestion?.id,
+      });
+    });
+
+    return result;
+  }, [suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.id, suggestionRecord, visibleUploadedDocuments]);
+
+  useEffect(() => {
+    setAttachments(computedAttachments);
+  }, [computedAttachments]);
+
+  useEffect(() => {
+    if (!attachments.length) {
+      setSelectedAttachmentId("");
+      setSelectedAttachment(null);
+      return;
+    }
+
+    setSelectedAttachmentId((prev) => {
+      if (prev && attachments.some((item) => item.id === prev)) {
+        return prev;
+      }
+      return attachments[0].id;
+    });
+  }, [attachments]);
+
+  useEffect(() => {
+    if (attachments.length > 0 && !selectedAttachment) {
+      setSelectedAttachment(attachments[0]);
+      return;
+    }
+
+    if (selectedAttachment && !attachments.some((item) => item.id === selectedAttachment.id)) {
+      setSelectedAttachment(attachments[0] || null);
+    }
+  }, [attachments, selectedAttachment]);
+
+  useEffect(() => {
+    if (!attachments.length || !selectedAttachmentId) {
+      return;
+    }
+    const nextSelectedAttachment = attachments.find((item) => item.id === selectedAttachmentId) || null;
+    if (nextSelectedAttachment && selectedAttachment?.id !== nextSelectedAttachment.id) {
+      setSelectedAttachment(nextSelectedAttachment);
+    }
+  }, [attachments, selectedAttachment?.id, selectedAttachmentId]);
+
   const previewFile = useMemo(() => {
     if (attachmentUrl) {
       return {
-        name: suggestion?.attachment_filename || "Attachment",
+        name: selectedAttachment?.file_name || "Attachment",
         url: attachmentUrl,
-        isImage: isImageFile(attachmentMimeType) || isImageFile(suggestion?.attachment_filename),
-        isPdf: isPdfFile(attachmentMimeType) || isPdfFile(suggestion?.attachment_filename),
+        isImage: isImageFile(attachmentMimeType) || isImageFile(selectedAttachment?.file_name),
+        isPdf: isPdfFile(attachmentMimeType) || isPdfFile(selectedAttachment?.file_name),
       };
     }
 
     return null;
-  }, [attachmentMimeType, attachmentUrl, suggestion?.attachment_filename]);
-
-  const hasAttachmentSource = useMemo(() => {
-    return Boolean(
-      suggestion?.id
-      && (
-        suggestion?.attachment_filename
-        || suggestion?.attachment_mime_type
-        || suggestion?.invoice_attachment_path
-      )
-    );
-  }, [suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.id, suggestion?.invoice_attachment_path]);
+  }, [attachmentMimeType, attachmentUrl, selectedAttachment?.file_name]);
 
   const sanitizedEmailHtml = useMemo(() => {
     if (!emailDetails?.email_body_html) {
@@ -786,7 +893,7 @@ const AssetPreviewModal = ({
   );
 
   const handleDownloadAttachment = async () => {
-    if (!suggestion?.id && !previewFile?.url) {
+    if (!selectedAttachment && !previewFile?.url) {
       return;
     }
 
@@ -794,12 +901,31 @@ const AssetPreviewModal = ({
       setAttachmentError("");
       setAttachmentDownloadLoading(true);
 
-      if (suggestion?.id) {
-        const blob = await fetchSuggestionAttachmentBlob(suggestion.id, true);
+      if (selectedAttachment) {
+        let blob: Blob;
+        if (selectedAttachment?.kind === "document" && selectedAttachment?.document_id) {
+          const assetIdFromUrl = (selectedAttachment?.file_url || "").match(/\/api\/assets\/([^/]+)\/documents\//)?.[1] || selectedAttachment?.asset_id || suggestion?.id;
+          if (!assetIdFromUrl) {
+            throw new Error("Asset id is missing for document download");
+          }
+          blob = await fetchAssetDocumentBlob(assetIdFromUrl, selectedAttachment.document_id);
+        } else {
+          const source = String((suggestion as unknown as Record<string, unknown>)?.source || "").trim().toLowerCase();
+          if (source === "email_sync" && suggestion?.id && suggestion?.attachment_filename) {
+            blob = await fetchSuggestionAttachmentBlob(suggestion.id, true);
+          } else {
+            const assetId = selectedAttachment?.asset_id || suggestion?.id;
+            if (!assetId) {
+              throw new Error("Asset id is missing for invoice download");
+            }
+            blob = await fetchAssetInvoiceBlob(assetId);
+          }
+        }
+
         const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = blobUrl;
-        link.download = suggestion.attachment_filename || previewFile.name || "attachment";
+        link.download = selectedAttachment?.file_name || previewFile?.name || "attachment";
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -1678,91 +1804,117 @@ const AssetPreviewModal = ({
 
             {!collapseDocumentViewer ? (
             <Paper variant="outlined" sx={{ minHeight: 0, display: "flex", flexDirection: "column", p: 2 }}>
-              {disableAttachmentAndEmailPreview ? (
-                <Box
-                  sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    px: 2,
-                  }}
+              <>
+                <Tabs
+                  value={rightPanelTab}
+                  onChange={(_, nextValue: "attachment" | "email") => setRightPanelTab(nextValue)}
+                  sx={{ mb: 1 }}
                 >
-                  <Alert severity="info">No attachment or email available for Excel uploaded assets</Alert>
-                </Box>
-              ) : (
-                <>
-                  <Tabs
-                    value={rightPanelTab}
-                    onChange={(_, nextValue: "attachment" | "email") => setRightPanelTab(nextValue)}
-                    sx={{ mb: 1 }}
-                  >
-                    <Tab value="attachment" label="Attachment" />
-                    <Tab value="email" label="Email" />
-                  </Tabs>
+                  <Tab value="attachment" label="Attachment" />
+                  {!disableAttachmentAndEmailPreview ? <Tab value="email" label="Email" /> : null}
+                </Tabs>
 
-                  {rightPanelTab === "attachment" ? (
-                    <>
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                        <Typography variant="subtitle1">Invoice Preview</Typography>
-                      </Box>
-                      {attachmentLoading ? (
-                        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <CircularProgress size={20} />
-                            <Typography variant="body2" color="text.secondary">Loading invoice preview...</Typography>
-                          </Stack>
-                        </Box>
-                      ) : attachmentError || attachmentRenderError ? (
-                        renderAttachmentFallback(attachmentError || "The file could not be rendered in the preview panel.")
-                      ) : previewFile?.isImage && previewFile.url ? (
-                        <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
-                          <Box
-                            component="img"
-                            src={previewFile.url}
-                            alt={previewFile.name}
-                            onError={() => {
-                              setAttachmentRenderError(true);
+                {rightPanelTab === "attachment" ? (
+                  <>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                      <Typography variant="subtitle1">Attachment Preview</Typography>
+                    </Box>
+
+                    {attachments.length > 1 ? (
+                      <Tabs
+                        value={selectedAttachment?.id || ""}
+                        onChange={(_, nextValue: string) => setSelectedAttachmentId(nextValue)}
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        sx={{ mb: 1, minHeight: 36 }}
+                      >
+                        {attachments.map((attachment) => (
+                          <Tab
+                            key={attachment.id}
+                            value={attachment.id}
+                            label={attachment.file_name}
+                            sx={{
+                              textTransform: "none",
+                              minHeight: 36,
+                              maxWidth: 220,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
                             }}
-                            sx={{ width: "100%", height: "100%", objectFit: "contain", display: "block", bgcolor: "background.default" }}
                           />
-                        </Box>
-                      ) : previewFile?.isPdf && previewFile.url ? (
-                        <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
-                          <object
-                            data={`${previewFile.url}#zoom=80&navpanes=0&view=FitH`}
-                            type="application/pdf"
-                            width="100%"
-                            height="100%"
-                            aria-label="Invoice PDF Preview"
-                          >
-                            {renderAttachmentFallback("The PDF preview could not be loaded in this browser.")}
-                          </object>
-                        </Box>
-                      ) : hasAttachmentSource ? (
-                        renderAttachmentFallback("Preview is not available for this file format.")
-                      ) : (
+                        ))}
+                      </Tabs>
+                    ) : null}
+
+                    {attachmentLoading ? (
+                      <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <CircularProgress size={20} />
+                          <Typography variant="body2" color="text.secondary">Loading attachment preview...</Typography>
+                        </Stack>
+                      </Box>
+                    ) : attachmentError || attachmentRenderError ? (
+                      renderAttachmentFallback(attachmentError || "The file could not be rendered in the preview panel.")
+                    ) : previewFile?.isImage && previewFile.url ? (
+                      <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
                         <Box
-                          sx={{
-                            flex: 1,
-                            minHeight: 0,
-                            border: 1,
-                            borderColor: "divider",
-                            borderRadius: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            px: 2,
+                          component="img"
+                          src={previewFile.url}
+                          alt={previewFile.name}
+                          onError={() => {
+                            setAttachmentRenderError(true);
                           }}
+                          sx={{ width: "100%", height: "100%", objectFit: "contain", display: "block", bgcolor: "background.default" }}
+                        />
+                      </Box>
+                    ) : previewFile?.isPdf && previewFile.url ? (
+                      <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}>
+                        <object
+                          data={`${previewFile.url}#zoom=80&navpanes=0&view=FitH`}
+                          type="application/pdf"
+                          width="100%"
+                          height="100%"
+                          aria-label="Attachment PDF Preview"
                         >
-                          <Alert severity="info">No file uploaded.</Alert>
-                        </Box>
-                      )}
-                    </>
+                          {renderAttachmentFallback("The PDF preview could not be loaded in this browser.")}
+                        </object>
+                      </Box>
+                    ) : attachments.length > 0 ? (
+                      renderAttachmentFallback("Preview is not available for this file format.")
+                    ) : (
+                      <Box
+                        sx={{
+                          flex: 1,
+                          minHeight: 0,
+                          border: 1,
+                          borderColor: "divider",
+                          borderRadius: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          px: 2,
+                        }}
+                      >
+                        <Alert severity="info">{getNoAttachmentMessage()}</Alert>
+                      </Box>
+                    )}
+                  </>
+                ) : (
+                  disableAttachmentAndEmailPreview ? (
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        px: 2,
+                      }}
+                    >
+                      <Alert severity="info">Email preview is disabled for this source.</Alert>
+                    </Box>
                   ) : (
                     <Box
                       sx={{
@@ -1858,9 +2010,9 @@ const AssetPreviewModal = ({
                         </Stack>
                       )}
                     </Box>
-                  )}
-                </>
-              )}
+                  )
+                )}
+              </>
             </Paper>
             ) : null}
           </Box>

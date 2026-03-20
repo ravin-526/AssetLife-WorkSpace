@@ -14,10 +14,38 @@ from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from app.core.security import get_current_user
+from app.core.status_master import (
+    get_default_status_name,
+    get_status_lookup,
+    resolve_status_from_lookup,
+    validate_or_map_status,
+)
 from app.db.mongo import get_db
 from app.routes.categories import FINAL_CATEGORY_SUBCATEGORIES
 
 router = APIRouter(prefix="/api/assets", tags=["Assets"])
+
+ASSET_SOURCE_EMAIL_SYNC = "email_sync"
+ASSET_SOURCE_INVOICE_UPLOAD = "invoice_upload"
+ASSET_SOURCE_EXCEL_UPLOAD = "excel_upload"
+ASSET_SOURCE_QR_SCAN = "qr_scan"
+ASSET_SOURCE_MANUAL = "manual"
+
+ASSET_SOURCE_ALIASES = {
+    ASSET_SOURCE_EMAIL_SYNC: ASSET_SOURCE_EMAIL_SYNC,
+    "gmail": ASSET_SOURCE_EMAIL_SYNC,
+    "email": ASSET_SOURCE_EMAIL_SYNC,
+    ASSET_SOURCE_INVOICE_UPLOAD: ASSET_SOURCE_INVOICE_UPLOAD,
+    "invoice": ASSET_SOURCE_INVOICE_UPLOAD,
+    ASSET_SOURCE_EXCEL_UPLOAD: ASSET_SOURCE_EXCEL_UPLOAD,
+    "excel": ASSET_SOURCE_EXCEL_UPLOAD,
+    ASSET_SOURCE_QR_SCAN: ASSET_SOURCE_QR_SCAN,
+    "barcode_qr": ASSET_SOURCE_QR_SCAN,
+    "qr": ASSET_SOURCE_QR_SCAN,
+    "barcode": ASSET_SOURCE_QR_SCAN,
+    ASSET_SOURCE_MANUAL: ASSET_SOURCE_MANUAL,
+    "manual_entry": ASSET_SOURCE_MANUAL,
+}
 
 UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -175,6 +203,11 @@ def _header_aliases_for_field(field: dict[str, Any]) -> set[str]:
 EXCEL_TEMPLATE_HEADER_ALIASES = {
     field["key"]: _header_aliases_for_field(field)
     for field in EXCEL_TEMPLATE_FIELDS
+}
+EXCEL_OPTIONAL_STATUS_HEADER_ALIASES = {
+    _normalized_header_name("status"),
+    _normalized_header_name("asset_status"),
+    _normalized_header_name("asset status"),
 }
 
 
@@ -398,6 +431,7 @@ def _normalize_excel_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _to_asset(item: dict[str, Any]) -> dict[str, Any]:
+    source = _normalize_asset_source(item.get("source"))
     return {
         "id": str(item.get("_id", "")),
         "name": item.get("name", ""),
@@ -406,7 +440,7 @@ def _to_asset(item: dict[str, Any]) -> dict[str, Any]:
         "vendor": item.get("vendor"),
         "purchase_date": item.get("purchase_date"),
         "price": item.get("price"),
-        "source": item.get("source", "manual"),
+        "source": source,
         "user_id": item.get("user_id", ""),
         "brand": item.get("brand"),
         "category": item.get("category"),
@@ -447,6 +481,11 @@ def _text(value: Any) -> str:
 
 def _normalized_lower(value: Any) -> str:
     return _text(value).lower()
+
+
+def _normalize_asset_source(value: Any) -> str:
+    normalized = _normalized_lower(value)
+    return ASSET_SOURCE_ALIASES.get(normalized, ASSET_SOURCE_MANUAL)
 
 
 def _is_truthy(value: Any) -> bool:
@@ -518,6 +557,120 @@ def _is_valid_date_value(value: Any) -> bool:
             continue
 
     return False
+
+
+def _parse_date(value: Any) -> date | None:
+    """Parse any value to a date object."""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    
+    text = _text(value)
+    if not text:
+        return None
+    
+    normalized = text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        return parsed.date()
+    except ValueError:
+        pass
+    
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    
+    return None
+
+
+def _extract_date_field(data: dict[str, Any] | None, *keys: str) -> date | None:
+    """Extract a date from nested dict, trying multiple key names."""
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        value = data.get(key)
+        parsed = _parse_date(value)
+        if parsed:
+            return parsed
+    return None
+
+
+def _extract_boolean_field(data: dict[str, Any] | None, *keys: str) -> bool:
+    """Extract a boolean from nested dict, trying multiple key names."""
+    if not isinstance(data, dict):
+        return False
+    for key in keys:
+        value = data.get(key)
+        if _is_truthy(value):
+            return True
+    return False
+
+
+def _compute_asset_status(asset_data: dict[str, Any]) -> str:
+    """
+    Compute asset status from lifecycle data and is_inactive flag.
+    
+    Rules (in order):
+    1. If is_inactive=true → "Inactive"
+    2. If warranty/insurance/service expired → "Expired"
+    3. If warranty/insurance/service expiring within 30 days → "Expiring Soon"
+    4. If warranty/insurance/service valid → "In Warranty"
+    5. Otherwise → "Active"
+    """
+    # Rule 1: Check if explicitly marked inactive
+    if asset_data.get("is_inactive") is True:
+        return "Inactive"
+    
+    # Extract lifecycle info
+    warranty = asset_data.get("warranty")
+    insurance = asset_data.get("insurance")
+    service = asset_data.get("service")
+    
+    # Collect all relevant dates
+    dates_to_check: list[date] = []
+    
+    # Extract warranty end date
+    if _extract_boolean_field(warranty, "available"):
+        warranty_end = _extract_date_field(warranty, "end_date", "expiry_date")
+        if warranty_end:
+            dates_to_check.append(warranty_end)
+    
+    # Extract insurance expiry date
+    if _extract_boolean_field(insurance, "available"):
+        insurance_end = _extract_date_field(insurance, "expiry_date", "end_date")
+        if insurance_end:
+            dates_to_check.append(insurance_end)
+    
+    # Extract service next due date
+    if _extract_boolean_field(service, "required"):
+        service_due = _extract_date_field(service, "next_service_date", "next_due_date")
+        if service_due:
+            dates_to_check.append(service_due)
+    
+    # If no dates, asset is active
+    if not dates_to_check:
+        return "Active"
+    
+    # Find nearest date
+    today = date.today()
+    nearest = min(dates_to_check)
+    
+    # Rule 2: Check if expired
+    if nearest < today:
+        return "Expired"
+    
+    # Rule 3: Check if expiring soon (within 30 days)
+    days_until = (nearest - today).days
+    if days_until <= 30:
+        return "Expiring Soon"
+    
+    # Rule 4: Valid warranty/insurance/service
+    return "In Warranty"
 
 
 async def _get_upload_validation_category_map(db) -> tuple[dict[str, str], dict[str, set[str]]]:
@@ -618,7 +771,11 @@ def _validate_excel_row(
     return errors
 
 
-def _to_excel_suggestion(row: dict[str, Any], row_number: int, duplicate_asset_id: str | None) -> dict[str, Any]:
+def _to_excel_suggestion(
+    row: dict[str, Any],
+    row_number: int,
+    duplicate_asset_id: str | None,
+) -> dict[str, Any]:
     warranty_available = _is_truthy(row.get("warranty_available"))
     insurance_available = _is_truthy(row.get("insurance_available"))
     service_required = _is_truthy(row.get("service_required"))
@@ -949,6 +1106,10 @@ async def upload_excel_file(
         )
         for column in EXCEL_TEMPLATE_COLUMNS
     }
+    optional_status_index = next(
+        (header_index_by_alias[alias] for alias in EXCEL_OPTIONAL_STATUS_HEADER_ALIASES if alias in header_index_by_alias),
+        None,
+    )
     category_lookup, subcategory_lookup = await _get_upload_validation_category_map(db)
 
     suggestions: list[dict[str, Any]] = []
@@ -1051,13 +1212,27 @@ async def create_asset(payload: dict[str, Any], current_user: dict[str, str] = D
 
     now_iso = datetime.now(timezone.utc).isoformat()
     name = _text(payload.get("name") or payload.get("product_name")) or "Unnamed Asset"
+    source = _normalize_asset_source(payload.get("source"))
+
     lifecycle_info = _lifecycle_payload(payload)
+    enriched_service = _enrich_service_lifecycle(lifecycle_info.get("service")) if lifecycle_info else None
+    
+    # Prepare document with enriched lifecycle data for status computation
+    temp_asset_for_status = {
+        "is_inactive": payload.get("is_inactive", False),
+        "warranty": lifecycle_info.get("warranty") if lifecycle_info else None,
+        "insurance": lifecycle_info.get("insurance") if lifecycle_info else None,
+        "service": enriched_service,
+    }
+    computed_status = _compute_asset_status(temp_asset_for_status)
+    
     document = {
         "user_id": current_user["id"],
         "name": name,
         "name_normalized": _normalized_lower(name),
         "asset_name": name,
-        "status": payload.get("status"),
+        "is_inactive": payload.get("is_inactive", False),
+        "status": computed_status,
         "brand": payload.get("brand"),
         "category": category,
         "subcategory": subcategory,
@@ -1074,8 +1249,8 @@ async def create_asset(payload: dict[str, Any], current_user: dict[str, str] = D
         "assigned_user": payload.get("assigned_user"),
         "warranty": lifecycle_info.get("warranty") if lifecycle_info else None,
         "insurance": lifecycle_info.get("insurance") if lifecycle_info else None,
-        "service": _enrich_service_lifecycle(lifecycle_info.get("service")) if lifecycle_info else None,
-        "source": payload.get("source") or "manual",
+        "service": enriched_service,
+        "source": source,
         "source_email_id": payload.get("source_email_id"),
         "source_email_sender": payload.get("source_email_sender"),
         "source_email_subject": payload.get("source_email_subject"),
@@ -1136,6 +1311,7 @@ async def update_asset(asset_id: str, payload: dict[str, Any], current_user: dic
     allowed = {
         "name",
         "asset_name",
+        "is_inactive",
         "status",
         "brand",
         "vendor",
@@ -1175,8 +1351,28 @@ async def update_asset(asset_id: str, payload: dict[str, Any], current_user: dic
     if subcategory is not None and not _text(subcategory):
         raise HTTPException(status_code=400, detail="SubCategory cannot be empty")
 
+
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+    # Determine status to store.
+    # "Inactive", "Lost", "Damaged" are explicit user-controlled statuses that should be
+    # stored as-is. Lifecycle statuses ("Active", "In Warranty", etc.) are always
+    # recomputed from lifecycle dates so they stay accurate.
+    _explicit_statuses = {"Inactive", "Lost", "Damaged"}
+    explicit_status = _text(payload.get("status"))
+    if explicit_status and explicit_status in _explicit_statuses:
+        # User explicitly chose a non-lifecycle status — preserve it and sync is_inactive.
+        update_data["status"] = explicit_status
+        update_data["is_inactive"] = (explicit_status == "Inactive")
+    else:
+        # Lifecycle status (or no status sent): recompute from merged data.
+        # If the user explicitly picked a lifecycle status (e.g. "Active"), clear
+        # is_inactive first so a previously-inactive asset is not stuck as Inactive.
+        if explicit_status:
+            update_data["is_inactive"] = False
+        merged_asset_data = {**old_asset, **update_data}
+        update_data["status"] = _compute_asset_status(merged_asset_data)
+        update_data["is_inactive"] = update_data["status"] == "Inactive"
     await db["assets"].update_one({"_id": object_id, "user_id": current_user["id"]}, {"$set": update_data})
     item = await db["assets"].find_one({"_id": object_id, "user_id": current_user["id"]})
     if not item:

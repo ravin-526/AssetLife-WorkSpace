@@ -137,7 +137,7 @@ const AssetSuggestions = () => {
         location: payload.location,
         assigned_user: payload.assigned_user,
         lifecycle_info: payload.lifecycle_info,
-        source: "gmail",
+        source: "email_sync",
         suggestion_id: selectedSuggestion.id,
       });
 

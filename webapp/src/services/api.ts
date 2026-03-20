@@ -86,10 +86,23 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     if (error.response?.status === 401) {
       useUserStore.getState().logout();
       window.location.href = "/login";
+    }
+
+    // When responseType is "blob", error.response.data is a Blob and .detail can't be read directly
+    if (error.response?.data instanceof Blob) {
+      try {
+        const text = await (error.response.data as Blob).text();
+        const parsed = JSON.parse(text) as { detail?: unknown };
+        if (parsed.detail) {
+          return Promise.reject(new Error(String(parsed.detail)));
+        }
+      } catch {
+        // fall through to generic error handling
+      }
     }
 
     return Promise.reject(new Error(extractErrorMessage(error as AxiosError<ApiErrorBody>)));

@@ -4,12 +4,14 @@ from pathlib import Path
 from typing import Any
 import base64
 import mimetypes
+from datetime import date
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from app.core.security import get_current_user
+from app.core.status_master import get_default_status_name, get_status_lookup, validate_or_map_status
 from app.db.mongo import get_db
 from app.schemas.gmail_import import SuggestionActionResponse, SuggestionEmailDetailsResponse, SuggestionParseResponse, SuggestionResponse
 from app.services.asset_suggestion_service import AssetSuggestionService
@@ -17,6 +19,132 @@ from app.services.gmail_service import GmailService
 from app.services.invoice_parser import InvoiceParserService
 
 router = APIRouter(prefix="/api/assets/suggestions", tags=["Asset Suggestions"])
+
+
+def _text(value: Any) -> str:
+    """Convert value to stripped string."""
+    return str(value or "").strip()
+
+
+def _is_truthy(value: Any) -> bool:
+    """Check if value is truthy (true, 1, yes, y, on)."""
+    normalized = _text(value).lower()
+    return normalized in {"true", "1", "yes", "y", "on"}
+
+
+def _parse_date(value: Any) -> date | None:
+    """Parse any value to a date object."""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    
+    text = _text(value)
+    if not text:
+        return None
+    
+    normalized = text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        return parsed.date()
+    except ValueError:
+        pass
+    
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    
+    return None
+
+
+def _extract_date_field(data: dict[str, Any] | None, *keys: str) -> date | None:
+    """Extract a date from nested dict, trying multiple key names."""
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        value = data.get(key)
+        parsed = _parse_date(value)
+        if parsed:
+            return parsed
+    return None
+
+
+def _extract_boolean_field(data: dict[str, Any] | None, *keys: str) -> bool:
+    """Extract a boolean from nested dict, trying multiple key names."""
+    if not isinstance(data, dict):
+        return False
+    for key in keys:
+        value = data.get(key)
+        if _is_truthy(value):
+            return True
+    return False
+
+
+def _compute_asset_status(asset_data: dict[str, Any]) -> str:
+    """
+    Compute asset status from lifecycle data and is_inactive flag.
+    
+    Rules (in order):
+    1. If is_inactive=true → "Inactive"
+    2. If warranty/insurance/service expired → "Expired"
+    3. If warranty/insurance/service expiring within 30 days → "Expiring Soon"
+    4. If warranty/insurance/service valid → "In Warranty"
+    5. Otherwise → "Active"
+    """
+    # Rule 1: Check if explicitly marked inactive
+    if asset_data.get("is_inactive") is True:
+        return "Inactive"
+    
+    # Extract lifecycle info
+    warranty = asset_data.get("warranty")
+    insurance = asset_data.get("insurance")
+    service = asset_data.get("service")
+    
+    # Collect all relevant dates
+    dates_to_check: list[date] = []
+    
+    # Extract warranty end date
+    if _extract_boolean_field(warranty, "available"):
+        warranty_end = _extract_date_field(warranty, "end_date", "expiry_date")
+        if warranty_end:
+            dates_to_check.append(warranty_end)
+    
+    # Extract insurance expiry date
+    if _extract_boolean_field(insurance, "available"):
+        insurance_end = _extract_date_field(insurance, "expiry_date", "end_date")
+        if insurance_end:
+            dates_to_check.append(insurance_end)
+    
+    # Extract service next due date
+    if _extract_boolean_field(service, "required"):
+        service_due = _extract_date_field(service, "next_service_date", "next_due_date")
+        if service_due:
+            dates_to_check.append(service_due)
+    
+    # If no dates, asset is active
+    if not dates_to_check:
+        return "Active"
+    
+    # Find nearest date
+    today = date.today()
+    nearest = min(dates_to_check)
+    
+    # Rule 2: Check if expired
+    if nearest < today:
+        return "Expired"
+    
+    # Rule 3: Check if expiring soon (within 30 days)
+    days_until = (nearest - today).days
+    if days_until <= 30:
+        return "Expiring Soon"
+    
+    # Rule 4: Valid warranty/insurance/service
+    return "In Warranty"
+
 
 
 def _parse_datetime(value: object) -> datetime | None:
@@ -242,9 +370,11 @@ async def confirm_suggestion(suggestion_id: str, payload: dict[str, Any], curren
     if not item:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
+    # Prepare asset data with lifecycle info from suggestion
     asset = {
         "user_id": current_user["id"],
         "name": payload.get("product_name") or item.get("product_name") or "Unnamed Asset",
+        "is_inactive": payload.get("is_inactive", False),
         "brand": payload.get("brand") or item.get("brand"),
         "vendor": payload.get("vendor") or item.get("vendor"),
         "price": payload.get("price") if payload.get("price") is not None else item.get("price"),
@@ -252,12 +382,18 @@ async def confirm_suggestion(suggestion_id: str, payload: dict[str, Any], curren
         "purchase_date": payload.get("purchase_date") or item.get("purchase_date"),
         "category": payload.get("category") or "Other",
         "subcategory": payload.get("subcategory") or "Custom Asset",
-        "source": "gmail",
+        "warranty": item.get("warranty_details") or None,
+        "insurance": item.get("insurance_details") or None,
+        "service": item.get("service_details") or None,
+        "source": "email_sync",
         "source_email_id": item.get("email_message_id"),
         "invoice_attachment_path": item.get("invoice_attachment_path"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    
+    # Compute and add status
+    asset["status"] = _compute_asset_status(asset)
 
     result = await db["assets"].insert_one(asset)
     await db["asset_suggestions"].update_one(

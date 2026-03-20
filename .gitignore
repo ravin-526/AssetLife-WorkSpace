@@ -16,3 +16,7 @@ webapp/node_modules/
 webapp/node_modules/.cache/
 backend/uploads/backend/.env
 backend/.env
+
+__pycache__/
+*.pyc
+*.log
