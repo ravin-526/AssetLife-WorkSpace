@@ -72,6 +72,7 @@ export type AssetSuggestion = {
   email_message_id: string;
   attachment_filename?: string;
   attachment_mime_type?: string;
+  invoice_attachment_path?: string;
   already_added: boolean;
   asset_id?: string;
   category?: string;
@@ -221,6 +222,10 @@ export type AssetCategoryOption = {
   category: string;
   subcategories: string[];
   sub_categories?: string[];
+};
+
+export type StatusMasterOption = {
+  name: string;
 };
 
 type AssetCategoryApiOption = {
@@ -405,6 +410,11 @@ export const getAssetCategories = async (): Promise<AssetCategoryOption[]> => {
       };
     })
     .filter((item) => Boolean(item.category));
+};
+
+export const getStatuses = async (): Promise<StatusMasterOption[]> => {
+  const response = await api.get<StatusMasterOption[]>("/api/statuses");
+  return response.data;
 };
 
 export const uploadAssetDocuments = async (assetId: string, files: File[]): Promise<{

@@ -254,20 +254,23 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
             borderRight: `1px solid ${sidebarBorderColor}`,
             overflowX: "hidden",
             transition: transitionStyle,
-            pt: `${SPACING(2)}px`,
+            pt: 0,
           },
         }}
       >
         <Box
           sx={{
-            minHeight: HEADER_HEIGHT,
+            height: HEADER_HEIGHT,
             px: `${SPACING(1.5)}px`,
-            py: `${SPACING(1)}px`,
-            borderBottom: `1px solid ${headerBorderColor}`,
+            pb: `${SPACING(1.5)}px`,
+            mb: 0,
+            borderBottom: "1px solid",
+            borderColor: "divider",
             display: "flex",
             alignItems: "center",
             justifyContent: collapsed ? "center" : "flex-start",
             gap: `${SPACING(1)}px`,
+            boxSizing: "border-box",
           }}
         >
           <Box
@@ -541,7 +544,9 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
             height: HEADER_HEIGHT,
             bgcolor: mode === "light" ? COLORS.LIGHT_HEADER : COLORS.DARK_HEADER,
             color: "text.primary",
-            borderBottom: `1px solid ${headerBorderColor}`,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            boxShadow: "none",
             transition: transitionStyle,
           }}
         >

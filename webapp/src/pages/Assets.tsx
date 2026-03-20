@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -10,12 +11,18 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControl,
   GlobalStyles,
   IconButton,
   InputAdornment,
+  InputLabel,
+  ListItemText,
   Menu,
   MenuItem,
+  OutlinedInput,
   Paper,
+  Select,
+  SelectChangeEvent,
   Stack,
   TablePagination,
   TextField,
@@ -50,24 +57,14 @@ import {
   getAssetSuggestions,
   getAssets,
   getMailboxStatus,
+  getStatuses,
   parseSuggestionAttachment,
   resetUserTestData,
   syncMailboxEmails,
   updateAsset,
   uploadAssetDocuments,
 } from "../services/gmail.ts";
-import { getLifecycleStatus, getWarrantyEndDate, getInsuranceEndDate, getServiceDueDate } from "../utils/assetStatus.ts";
-
-type LifecycleFilter = "all" | "active" | "expired" | "dueSoon" | "inactive";
-
-const normalizeStatusLabel = (status: string) => {
-  const trimmed = status.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-};
+// Status is now stored in DB, no need for frontend derivation
 
 const Assets = () => {
   const navigate = useNavigate();
@@ -90,7 +87,7 @@ const Assets = () => {
   const [parsingMessage, setParsingMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [warrantyFilter, setWarrantyFilter] = useState("");
   const [purchaseDateFilter, setPurchaseDateFilter] = useState("");
   const [purchaseDateFrom, setPurchaseDateFrom] = useState("");
@@ -139,8 +136,6 @@ const Assets = () => {
   const [mailboxEmailInputError, setMailboxEmailInputError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [appliedLifecycleFilter, setAppliedLifecycleFilter] = useState<LifecycleFilter | null>(null);
-  const [redirectLifecycleFilter, setRedirectLifecycleFilter] = useState<LifecycleFilter | null>(null);
 
   useAutoDismissMessage(message, setMessage, { delay: 3000 });
   useAutoDismissMessage(error, setError, { delay: 5000 });
@@ -211,57 +206,24 @@ const Assets = () => {
   }, [navigate]);
 
   useEffect(() => {
-    const incomingState = location.state as { lifecycleFilter?: LifecycleFilter } | null;
-    const incomingLifecycleFilter = incomingState?.lifecycleFilter;
+    const incomingState = location.state as { statusFilter?: string } | null;
+    const incomingStatusFilter = String(incomingState?.statusFilter || "");
 
-    if (
-      incomingLifecycleFilter === "all"
-      || incomingLifecycleFilter === "active"
-      || incomingLifecycleFilter === "expired"
-      || incomingLifecycleFilter === "dueSoon"
-      || incomingLifecycleFilter === "inactive"
-    ) {
-      setRedirectLifecycleFilter(incomingLifecycleFilter);
+    if (incomingStatusFilter) {
+      setSelectedStatuses([incomingStatusFilter]);
+      setPage(0);
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
 
-  useEffect(() => {
-    if (!redirectLifecycleFilter) {
-      return;
-    }
-
-    if (redirectLifecycleFilter === "inactive") {
-      const matchedInactiveStatus = assets
-        .map((asset) => String(asset.status || "").trim())
-        .find((status) => status.toLowerCase() === "inactive");
-
-      setStatusFilter(matchedInactiveStatus || "Inactive");
-      setAppliedLifecycleFilter(null);
-      setRedirectLifecycleFilter(null);
-      setPage(0);
-      return;
-    }
-
-    if (redirectLifecycleFilter === "all") {
-      setAppliedLifecycleFilter(null);
-      setStatusFilter("");
-      setRedirectLifecycleFilter(null);
-      setPage(0);
-      return;
-    }
-
-    setAppliedLifecycleFilter(redirectLifecycleFilter);
-    setStatusFilter("");
-    setRedirectLifecycleFilter(null);
+  const handleStatusFilterChange = (event: SelectChangeEvent<string[]>) => {
+    setSelectedStatuses(event.target.value as string[]);
     setPage(0);
-  }, [assets, redirectLifecycleFilter]);
+  };
 
   const handleClearFilters = () => {
     setSearchQuery("");
-    setStatusFilter("");
-    setAppliedLifecycleFilter(null);
-    setRedirectLifecycleFilter(null);
+    setSelectedStatuses([]);
     setWarrantyFilter("");
     setPurchaseDateFilter("");
     setPurchaseDateFrom("");
@@ -323,8 +285,8 @@ const Assets = () => {
       purchase_date: asset.purchase_date || undefined,
       quantity: 1,
       source: asset.source || "manual",
-      status: "pending",
-      asset_status: String((asset as Asset & { status?: string }).status || "active"),
+      status: String((asset as Asset & { status?: string }).status || "Active").trim() || "Active",
+      asset_status: String((asset as Asset & { status?: string }).status || "").trim(),
       email_message_id: asset.source_email_id || asset.id,
       already_added: false,
       category: asset.category || undefined,
@@ -672,12 +634,12 @@ const Assets = () => {
       setAssetPreviewEditSaveLoading(true);
       setError("");
 
-      await updateAsset(editingAssetId, {
+      const updatedAsset = await updateAsset(editingAssetId, {
         name: payload.product_name?.trim() || undefined,
         brand: payload.brand?.trim() || undefined,
         vendor: payload.vendor?.trim() || undefined,
         price: payload.price,
-        status: payload.status?.trim() || undefined,
+        status: payload.status?.trim() || editingAsset?.status || undefined,
         purchase_date: payload.purchase_date || undefined,
         category: payload.category?.trim() || undefined,
         subcategory: payload.subcategory?.trim() || undefined,
@@ -695,7 +657,7 @@ const Assets = () => {
         await uploadAssetDocuments(editingAssetId, payload.supporting_documents);
       }
 
-      await loadAssets();
+      setAssets((prev) => prev.map((a) => a.id === updatedAsset.id ? updatedAsset : a));
       setMessage("Asset updated successfully.");
       handleCloseAssetPreviewEditDialog();
     } catch (requestError: unknown) {
@@ -1152,10 +1114,6 @@ const Assets = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => {
-    console.log("Statuses:", assets.map((asset) => asset.status));
-  }, [assets]);
-
   const filteredAssets = useMemo(() => {
     // Normalize a Date to local-midnight so comparisons are day-accurate
     // regardless of whether the source was parsed as UTC or local time.
@@ -1175,8 +1133,6 @@ const Assets = () => {
     const toDate = purchaseDateTo ? parseYMD(purchaseDateTo) : null;
 
     return assets.filter((asset) => {
-      const lifecycleStatus = getLifecycleStatus(asset);
-
       if (debouncedQuery) {
         const text = [asset.name, asset.brand, asset.vendor, asset.category, asset.subcategory]
           .map((value) => String(value || "").toLowerCase())
@@ -1184,21 +1140,9 @@ const Assets = () => {
         if (!text.includes(debouncedQuery)) return false;
       }
 
-      if (statusFilter) {
-        if (String(asset.status || "").trim().toLowerCase() !== statusFilter.toLowerCase()) return false;
-      }
-
-      if (appliedLifecycleFilter === "inactive" && String(asset.status || "").toLowerCase() !== "inactive") {
-        return false;
-      }
-
-      if (
-        appliedLifecycleFilter
-        && appliedLifecycleFilter !== "all"
-        && appliedLifecycleFilter !== "inactive"
-        && lifecycleStatus !== appliedLifecycleFilter
-      ) {
-        return false;
+      if (selectedStatuses.length > 0) {
+        // Compare derived DB-mapped label against selected DB status names
+        if (!selectedStatuses.includes(getAssetStatusLabel(asset))) return false;
       }
 
       if (purchaseDateFilter) {
@@ -1245,8 +1189,7 @@ const Assets = () => {
   }, [
     assets,
     debouncedQuery,
-    statusFilter,
-    appliedLifecycleFilter,
+    selectedStatuses,
     warrantyFilter,
     purchaseDateFilter,
     purchaseDateFrom,
@@ -1271,17 +1214,6 @@ const Assets = () => {
     }
     return options;
   }, [assetCategories, editForm.category, editForm.subcategory]);
-
-  const statusOptions = useMemo(() => {
-    const uniqueStatuses = new Set(
-      assets
-        .map((asset) => String(asset.status || "").trim())
-        .filter(Boolean)
-        .map((status) => normalizeStatusLabel(status))
-    );
-
-    return Array.from(uniqueStatuses).sort((a, b) => a.localeCompare(b));
-  }, [assets]);
 
   const paginatedAssets = filteredAssets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -1643,15 +1575,24 @@ const Assets = () => {
                     ),
                   }}
                 />
-                <TextField size="small" select label="Status" value={statusFilter}
-                  onChange={(event) => { setStatusFilter(event.target.value); setPage(0); }}
-                  sx={{ minWidth: 140 }}
-                >
-                  <MenuItem value="">All</MenuItem>
-                  {statusOptions.map((option) => (
-                    <MenuItem key={option} value={option}>{option}</MenuItem>
-                  ))}
-                </TextField>
+                <FormControl size="small" sx={{ minWidth: 220 }}>
+                  <InputLabel id="status-filter-label">Status</InputLabel>
+                  <Select
+                    labelId="status-filter-label"
+                    multiple
+                    value={selectedStatuses}
+                    onChange={handleStatusFilterChange}
+                    input={<OutlinedInput label="Status" />}
+                    renderValue={(selected) => selected.join(", ")}
+                  >
+                    {["Active", "In Warranty", "Expiring Soon", "Expired", "Inactive", "Lost", "Damaged"].map((status) => (
+                      <MenuItem key={status} value={status} sx={{ py: 0.5 }}>
+                        <Checkbox checked={selectedStatuses.indexOf(status) > -1} size="small" />
+                        <ListItemText primary={status} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
                 <TextField size="small" select label="Purchase Date" value={purchaseDateFilter}
                   onChange={(event) => {
                     setPurchaseDateFilter(event.target.value);
@@ -1716,7 +1657,7 @@ const Assets = () => {
                   <MenuItem value="due_soon">Due soon</MenuItem>
                   <MenuItem value="overdue">Overdue</MenuItem>
                 </TextField>
-                {(searchQuery || statusFilter || appliedLifecycleFilter || warrantyFilter || purchaseDateFilter || insuranceDateFilter || serviceDateFilter) ? (
+                {(searchQuery || selectedStatuses.length > 0 || warrantyFilter || purchaseDateFilter || insuranceDateFilter || serviceDateFilter) ? (
                   <Button
                     size="small"
                     variant="outlined"
@@ -1736,7 +1677,7 @@ const Assets = () => {
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
                 <Box>
                   <Typography variant="h6" sx={{ lineHeight: 1.3 }}>{viewMode === "grid" ? "Asset Grid" : "Asset Cards"}</Typography>
-                  {(statusFilter || appliedLifecycleFilter) ? (
+                  {selectedStatuses.length > 0 ? (
                     <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
                       Filters applied
                     </Typography>

@@ -125,7 +125,6 @@ const AssetPreviewModal = ({
     brand: "",
     vendor: "",
     price: "",
-    status: "Active",
     purchase_date: "",
     category: "",
     subcategory: "",
@@ -138,6 +137,7 @@ const AssetPreviewModal = ({
     description: "",
     custom_category: "",
     custom_subcategory: "",
+    status: "Active",
   });
   const [warrantyEnabled, setWarrantyEnabled] = useState(false);
   const [warrantyDetails, setWarrantyDetails] = useState({
@@ -188,6 +188,21 @@ const AssetPreviewModal = ({
   const suggestion = useMemo(() => {
     return suggestions?.[currentIndex] ?? suggestionProp ?? null;
   }, [currentIndex, suggestionProp, suggestions]);
+
+  useEffect(() => {
+    if (!open || !suggestion) {
+      return;
+    }
+    console.log("Asset in popup:", suggestion);
+  }, [open, suggestion]);
+
+  useEffect(() => {
+    console.log("Attachment:", attachmentUrl);
+  }, [attachmentUrl]);
+
+  useEffect(() => {
+    console.log("Loading:", attachmentLoading);
+  }, [attachmentLoading]);
 
   const getRecordValue = (record: Record<string, unknown>, keys: string[]): string | undefined => {
     for (const key of keys) {
@@ -388,28 +403,34 @@ const AssetPreviewModal = ({
     if (!open) {
       return;
     }
+    const record = (suggestion as unknown as Record<string, unknown>) || {};
+
     const initialForm = {
       product_name: suggestion?.product_name ?? "",
       brand: suggestion?.brand ?? "",
       vendor: suggestion?.vendor ?? "",
       price: suggestion?.price !== undefined && suggestion?.price !== null ? String(suggestion.price) : "",
-      status: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["asset_status"]) ?? "Active",
       purchase_date: suggestion?.purchase_date ? suggestion.purchase_date.slice(0, 10) : "",
-      category: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["category", "asset_category"]) ?? "",
-      subcategory: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["subcategory", "sub_category", "asset_subcategory"]) ?? "",
-      serial_number: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["serial_number", "serialNo"]) ?? "",
-      model_number: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["model_number", "modelNo"]) ?? "",
-      invoice_number: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["invoice_number", "invoice_no"]) ?? "",
-      location: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["location"]) ?? "",
-      assigned_user: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["assigned_user", "assigned_to"]) ?? "",
-      notes: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["notes"]) ?? "",
-      description: getRecordValue((suggestion as unknown as Record<string, unknown>) || {}, ["description"]) ?? "",
+      category: getRecordValue(record, ["category", "asset_category"]) ?? "",
+      subcategory: getRecordValue(record, ["subcategory", "sub_category", "asset_subcategory"]) ?? "",
+      serial_number: getRecordValue(record, ["serial_number", "serialNo"]) ?? "",
+      model_number: getRecordValue(record, ["model_number", "modelNo"]) ?? "",
+      invoice_number: getRecordValue(record, ["invoice_number", "invoice_no"]) ?? "",
+      location: getRecordValue(record, ["location"]) ?? "",
+      assigned_user: getRecordValue(record, ["assigned_user", "assigned_to"]) ?? "",
+      notes: getRecordValue(record, ["notes"]) ?? "",
+      description: getRecordValue(record, ["description"]) ?? "",
       custom_category: "",
       custom_subcategory: "",
+      status: (() => {
+        const rawStatus = getRecordValue(record, ["status"]);
+        if (rawStatus) return rawStatus;
+        const isInactive = getBooleanRecordValue(record, ["is_inactive"]);
+        return isInactive ? "Inactive" : "Active";
+      })(),
     };
     setForm(initialForm);
 
-    const record = (suggestion as unknown as Record<string, unknown>) || {};
     const warranty = getObjectRecordValue(record, ["warranty_details", "warranty"]);
     const warrantyReminders = warranty ? getObjectRecordValue(warranty, ["reminders"]) : undefined;
     const warrantyEnabledFromSuggestion = warranty
@@ -515,24 +536,34 @@ const AssetPreviewModal = ({
     let isMounted = true;
 
     const loadAttachmentPreview = async () => {
-      const canPreview = isPreviewableAttachment(suggestion?.attachment_filename, suggestion?.attachment_mime_type);
       if (disableAttachmentAndEmailPreview || !open || rightPanelTab !== "attachment" || !suggestion?.id) {
-        if (attachmentUrl) {
-          URL.revokeObjectURL(attachmentUrl);
-        }
-        setAttachmentUrl(null);
+        setAttachmentLoading(false);
+        setAttachmentUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return null;
+        });
         setAttachmentMimeType("");
         setAttachmentRenderError(false);
         return;
       }
 
-      if (!canPreview) {
-        if (attachmentUrl) {
-          URL.revokeObjectURL(attachmentUrl);
-        }
-        setAttachmentUrl(null);
-        setAttachmentMimeType("");
+      const hasAttachmentCandidate = Boolean(
+        suggestion?.attachment_filename
+        || suggestion?.attachment_mime_type
+        || suggestion?.invoice_attachment_path
+      );
+
+      if (!hasAttachmentCandidate) {
         setAttachmentLoading(false);
+        setAttachmentUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return null;
+        });
+        setAttachmentMimeType("");
         setAttachmentRenderError(false);
         return;
       }
@@ -547,31 +578,40 @@ const AssetPreviewModal = ({
         }
 
         const resolvedMimeType = blob.type || suggestion.attachment_mime_type || "";
+        const canPreview = isPreviewableAttachment(suggestion?.attachment_filename, resolvedMimeType);
         const hasValidBlob = isValidPreviewBlob(blob);
-        if (!hasValidBlob) {
-          if (attachmentUrl) {
-            URL.revokeObjectURL(attachmentUrl);
-          }
-          setAttachmentUrl(null);
+        if (!hasValidBlob || !canPreview) {
+          setAttachmentUrl((prev) => {
+            if (prev) {
+              URL.revokeObjectURL(prev);
+            }
+            return null;
+          });
           setAttachmentMimeType(resolvedMimeType);
-          setAttachmentError("Invalid or unsupported file.");
+          setAttachmentError(hasValidBlob ? "" : "Invalid or unsupported file.");
           setAttachmentRenderError(false);
           return;
         }
 
-        if (attachmentUrl) {
-          URL.revokeObjectURL(attachmentUrl);
-        }
-
         const objectUrl = URL.createObjectURL(blob);
-        setAttachmentUrl(objectUrl);
+        setAttachmentUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return objectUrl;
+        });
         setAttachmentMimeType(resolvedMimeType);
       } catch (requestError: unknown) {
         if (!isMounted) {
           return;
         }
         setAttachmentError(requestError instanceof Error ? requestError.message : "Failed to load attachment preview");
-        setAttachmentUrl(null);
+        setAttachmentUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return null;
+        });
         setAttachmentMimeType("");
       } finally {
         if (isMounted) {
@@ -585,7 +625,15 @@ const AssetPreviewModal = ({
     return () => {
       isMounted = false;
     };
-  }, [attachmentUrl, disableAttachmentAndEmailPreview, open, rightPanelTab, suggestion]);
+  }, [
+    disableAttachmentAndEmailPreview,
+    open,
+    rightPanelTab,
+    suggestion?.attachment_filename,
+    suggestion?.attachment_mime_type,
+    suggestion?.id,
+    suggestion?.invoice_attachment_path,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -670,8 +718,15 @@ const AssetPreviewModal = ({
   }, [attachmentMimeType, attachmentUrl, suggestion?.attachment_filename]);
 
   const hasAttachmentSource = useMemo(() => {
-    return Boolean(suggestion?.id && (suggestion?.attachment_filename || suggestion?.attachment_mime_type));
-  }, [suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.id]);
+    return Boolean(
+      suggestion?.id
+      && (
+        suggestion?.attachment_filename
+        || suggestion?.attachment_mime_type
+        || suggestion?.invoice_attachment_path
+      )
+    );
+  }, [suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.id, suggestion?.invoice_attachment_path]);
 
   const sanitizedEmailHtml = useMemo(() => {
     if (!emailDetails?.email_body_html) {
@@ -687,8 +742,11 @@ const AssetPreviewModal = ({
     if (suggestion?.attachment_filename) {
       return [{ file_name: suggestion.attachment_filename, mime_type: suggestion.attachment_mime_type }];
     }
+    if (suggestion?.invoice_attachment_path) {
+      return [{ file_name: suggestion.invoice_attachment_path.split("/").pop() || "Attachment", mime_type: suggestion.attachment_mime_type }];
+    }
     return [];
-  }, [emailDetails?.attachments, suggestion?.attachment_filename, suggestion?.attachment_mime_type]);
+  }, [emailDetails?.attachments, suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.invoice_attachment_path]);
 
   const renderAttachmentFallback = (message?: string) => (
     <Box
@@ -833,7 +891,7 @@ const AssetPreviewModal = ({
       brand: form.brand || undefined,
       vendor: form.vendor || undefined,
       price: form.price ? Number(form.price) : undefined,
-      status: form.status || undefined,
+      status: form.status || "Active",
       purchase_date: form.purchase_date || undefined,
       category: finalCategory || undefined,
       subcategory: finalSubcategory || undefined,
@@ -1020,7 +1078,39 @@ const AssetPreviewModal = ({
       }}
     >
       {showTitle ? (
-        <DialogTitle>Asset Preview</DialogTitle>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          Asset Preview
+          {suggestion && (() => {
+            const currentStatus = String(form.status || "").trim() || "Active";
+            const normalized = currentStatus.toLowerCase();
+            const color = normalized === "active" ? "#2e7d32"
+              : normalized === "inactive" ? "#757575"
+              : normalized.includes("expiring") ? "#e65100"
+              : normalized === "expired" ? "#c62828"
+              : normalized.includes("warranty") ? "#1565c0"
+              : normalized === "lost" || normalized === "damaged" ? "#c62828"
+              : "#757575";
+            return (
+              <Typography
+                component="span"
+                sx={{
+                  fontSize: "0.72rem",
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                  textTransform: "uppercase",
+                  px: 1,
+                  py: 0.3,
+                  borderRadius: 1,
+                  border: `1px solid ${color}`,
+                  color,
+                  lineHeight: 1.5,
+                }}
+              >
+                {currentStatus}
+              </Typography>
+            );
+          })()}
+        </DialogTitle>
       ) : null}
       <DialogContent sx={{ overflow: inlineMode ? "visible" : "hidden", height: inlineMode ? "auto" : { xs: "70vh", md: "72vh" } }}>
         <Box sx={{ mt: 1, minHeight: 0, height: "100%" }}>
@@ -1172,18 +1262,14 @@ const AssetPreviewModal = ({
                             size="small"
                             select
                             label="Status"
-                            value={form.status}
+                            value={form.status || "Active"}
                             onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
                             sx={standardFieldSx}
                             fullWidth
                           >
-                            {!["Active", "Inactive", "Lost", "Damaged"].includes(form.status) ? (
-                              <MenuItem value={form.status}>{form.status}</MenuItem>
-                            ) : null}
-                            <MenuItem value="Active">Active</MenuItem>
-                            <MenuItem value="Inactive">Inactive</MenuItem>
-                            <MenuItem value="Lost">Lost</MenuItem>
-                            <MenuItem value="Damaged">Damaged</MenuItem>
+                            {["Active", "Inactive", "Lost", "Damaged"].map((s) => (
+                              <MenuItem key={s} value={s} sx={{ py: 0.75 }}>{s}</MenuItem>
+                            ))}
                           </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>

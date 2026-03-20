@@ -38,15 +38,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, Legend, Tooltip as ChartTooltip, ResponsiveContainer } from "recharts";
 
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
+import { STATUS_OPTIONS } from "../constants/statusOptions.ts";
 import { Asset, getAssetSuggestions, getAssets } from "../services/gmail.ts";
 import { Reminder, getReminders } from "../services/reminders.ts";
 import {
-  getLifecycleStatus,
-  getAssetStatusLabel,
   getWarrantyEndDate,
   getInsuranceEndDate,
   getServiceDueDate,
 } from "../utils/assetStatus.ts";
+// Status computation moved to backend; these utilities are for alerts only
 
 // Animated Number Component
 const AnimatedNumber = ({ value, duration = 600 }: { value: number; duration?: number }) => {
@@ -77,7 +77,7 @@ const AnimatedNumber = ({ value, duration = 600 }: { value: number; duration?: n
 };
 
 type SummaryCardConfig = {
-  key: "total" | "active" | "expired" | "dueSoon" | "inactive";
+  key: string;
   label: string;
   value: number;
   color: "text.secondary" | "success.main" | "error.main" | "warning.main" | "info.main" | "grey.600";
@@ -253,28 +253,46 @@ const Dashboard = () => {
   }, []);
 
   const summary = useMemo(() => {
-    return assets.reduce(
-      (acc, asset) => {
-        const lifecycleStatus = getLifecycleStatus(asset);
-        const manualStatus = String((asset as Asset & { status?: string }).status || "").trim().toLowerCase();
-        acc.total += 1;
-        acc[lifecycleStatus] += 1;
-        if (manualStatus === "inactive") {
-          acc.inactive += 1;
-        }
-        return acc;
-      },
-      {
-        total: 0,
-        active: 0,
-        expired: 0,
-        dueSoon: 0,
-        inactive: 0,
+    const counts: Record<string, number> = { total: 0 };
+    STATUS_OPTIONS.forEach((status) => {
+      counts[status] = 0;
+    });
+
+    assets.forEach((asset) => {
+      // Status is now stored in DB
+      const status = String(asset.status || "Active").trim();
+
+      counts.total += 1;
+
+      if (status && counts[status] !== undefined) {
+        counts[status] += 1;
       }
-    );
+    });
+
+    return counts;
   }, [assets]);
 
   const summaryCards = useMemo<SummaryCardConfig[]>(() => {
+    const toCardColor = (label: string): SummaryCardConfig["color"] => {
+      const normalized = label.toLowerCase();
+      if (normalized === "active") return "success.main";
+      if (normalized.includes("warranty")) return "info.main";
+      if (normalized.includes("expiring")) return "warning.main";
+      if (normalized.includes("expired")) return "error.main";
+      if (normalized.includes("inactive")) return "grey.600";
+      return "text.secondary";
+    };
+
+    const toCardIcon = (label: string): React.ReactNode => {
+      const normalized = label.toLowerCase();
+      if (normalized === "active") return <CheckCircleOutlineOutlinedIcon fontSize="small" />;
+      if (normalized.includes("warranty")) return <InfoOutlinedIcon fontSize="small" />;
+      if (normalized.includes("expiring")) return <WarningAmberOutlinedIcon fontSize="small" />;
+      if (normalized.includes("expired")) return <ErrorOutlineOutlinedIcon fontSize="small" />;
+      if (normalized.includes("inactive")) return <BuildCircleOutlinedIcon fontSize="small" />;
+      return <ScheduleOutlinedIcon fontSize="small" />;
+    };
+
     return [
       {
         key: "total",
@@ -283,34 +301,13 @@ const Dashboard = () => {
         color: "text.secondary",
         icon: <Inventory2OutlinedIcon fontSize="small" />,
       },
-      {
-        key: "active",
-        label: "Active Assets",
-        value: summary.active,
-        color: "success.main",
-        icon: <CheckCircleOutlineOutlinedIcon fontSize="small" />,
-      },
-      {
-        key: "expired",
-        label: "Expired",
-        value: summary.expired,
-        color: "error.main",
-        icon: <ErrorOutlineOutlinedIcon fontSize="small" />,
-      },
-      {
-        key: "dueSoon",
-        label: "Due Soon (7 days)",
-        value: summary.dueSoon,
-        color: "warning.main",
-        icon: <WarningAmberOutlinedIcon fontSize="small" />,
-      },
-      {
-        key: "inactive",
-        label: "Inactive",
-        value: summary.inactive,
-        color: "grey.600",
-        icon: <BuildCircleOutlinedIcon fontSize="small" />,
-      },
+      ...STATUS_OPTIONS.filter((status) => status !== "Lost" && status !== "Damaged").map((status) => ({
+        key: status,
+        label: status,
+        value: summary[status] || 0,
+        color: toCardColor(status),
+        icon: toCardIcon(status),
+      })),
     ];
   }, [summary]);
 
@@ -429,7 +426,8 @@ const Dashboard = () => {
   const assetsByStatus = useMemo<DistributionRow[]>(() => {
     const counts = new Map<string, number>();
     for (const asset of assets) {
-      const key = getAssetStatusLabel(asset);
+      // Status is now stored in DB
+      const key = String(asset.status || "Active").trim();
       counts.set(key, (counts.get(key) || 0) + 1);
     }
 
@@ -544,7 +542,7 @@ const Dashboard = () => {
     }
 
     const criticalItemsThisWeek = expiringSoon7Days + overdueService + expiredInsurance;
-    const penalties = summary.expired * 20 + overdueService * 20 + missingInsurance * 10 + missingWarranty * 10;
+    const penalties = (summary["Expired"] || 0) * 20 + overdueService * 20 + missingInsurance * 10 + missingWarranty * 10;
     const healthScore =
       assets.length === 0 ? 100 : Math.max(0, Math.min(100, Math.round(100 - penalties / assets.length)));
 
@@ -560,7 +558,7 @@ const Dashboard = () => {
         .sort((a, b) => a.date.getTime() - b.date.getTime())
         .slice(0, 5),
     };
-  }, [assets, summary.expired]);
+  }, [assets, summary]);
 
   const renderDistributionBars = (rows: DistributionRow[], color: string) => {
     const maxCount = rows.reduce((acc, row) => Math.max(acc, row.count), 0);
@@ -651,17 +649,12 @@ const Dashboard = () => {
   };
 
   const handleCardClick = (cardKey: SummaryCardConfig["key"]) => {
-    const filterMap: Record<SummaryCardConfig["key"], "all" | "active" | "expired" | "dueSoon" | "inactive"> = {
-      total: "all",
-      active: "active",
-      expired: "expired",
-      dueSoon: "dueSoon",
-      inactive: "inactive",
-    };
+    const card = summaryCards.find((item) => item.key === cardKey);
+    const statusFilter = cardKey === "total" ? "" : String(card?.label || "");
 
     navigate("/assets", {
       state: {
-        lifecycleFilter: filterMap[cardKey],
+        statusFilter,
       },
     });
   };
@@ -1190,7 +1183,7 @@ const Dashboard = () => {
                   {selectedAsset.category || "-"} / {selectedAsset.subcategory || "-"}
                 </Typography>
               </Box>
-              <Typography variant="body2"><strong>Status:</strong> {getAssetStatusLabel(selectedAsset)}</Typography>
+              <Typography variant="body2"><strong>Status:</strong> {selectedAsset.status || "-"}</Typography>
               <Typography variant="body2"><strong>Brand:</strong> {selectedAsset.brand || "-"}</Typography>
               <Typography variant="body2"><strong>Vendor:</strong> {selectedAsset.vendor || "-"}</Typography>
               <Typography variant="body2"><strong>Purchase Date:</strong> {formatDate(selectedAsset.purchase_date)}</Typography>

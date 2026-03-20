@@ -550,6 +550,7 @@ const AddAsset = () => {
       setSelectedAssetId(null);
       setUploadedDocuments([]);
       setParsingSuggestionId(suggestion.id);
+      console.log("Selected asset data:", suggestion);
       const parsed = await parseSuggestionAttachment(suggestion.id);
 
       setSelectedSuggestion({

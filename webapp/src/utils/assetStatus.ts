@@ -1,6 +1,6 @@
 import { Asset } from "../services/gmail";
 
-export type AssetStatus = "active" | "expired" | "dueSoon" | "inactive";
+export type AssetStatus = "active" | "expired" | "dueSoon" | "inWarranty" | "inactive";
 export type AssetFilter = AssetStatus | "all";
 
 /**
@@ -143,36 +143,57 @@ export function getServiceDueDate(asset: Asset): Date | null {
   return safeParseDate(dueDateValue);
 }
 
-export function getLifecycleStatus(asset: Asset): "active" | "expired" | "dueSoon" {
+export function getLifecycleStatus(asset: Asset): "active" | "expired" | "dueSoon" | "inWarranty" {
   const today = toStartOfDay(new Date());
-  const dates = [getWarrantyEndDate(asset), getInsuranceEndDate(asset), getServiceDueDate(asset)]
+  
+  // Get all relevant dates: warranty, insurance, service
+  const warrantyEnd = getWarrantyEndDate(asset);
+  const insuranceEnd = getInsuranceEndDate(asset);
+  const serviceEnd = getServiceDueDate(asset);
+  
+  const dates = [warrantyEnd, insuranceEnd, serviceEnd]
     .filter((value): value is Date => value !== null)
     .map((value) => toStartOfDay(value));
 
   if (dates.length === 0) {
-    return "active";
+    return "active"; // No dates defined, asset is active
   }
 
+  // Find the nearest date
   const nearest = new Date(Math.min(...dates.map((date) => date.getTime())));
 
+  // Check if expired
   if (nearest < today) {
     return "expired";
   }
 
+  // Check if expiring soon (within 30 days, changed from 7 to 30)
   const diffDays = (nearest.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-  if (diffDays <= 7) {
+  if (diffDays <= 30) {
     return "dueSoon";
   }
 
-  return "active";
+  // Has valid warranty
+  return "inWarranty";
 }
 
+/**
+ * Derive asset status from lifecycle data and inactive flag
+ * 
+ * 1. If explicitly marked inactive → "Inactive"
+ * 2. If warranty/insurance/service expired → "Expired"
+ * 3. If warranty/insurance/service expiring within 30 days → "Expiring Soon"
+ * 4. If warranty/insurance/service valid → "In Warranty"
+ * 5. Else → "Active"
+ */
 export function getAssetStatus(asset: Asset): AssetStatus {
-  const explicit = String((asset as Asset & { status?: string }).status || "").trim().toLowerCase();
-  if (explicit === "inactive") {
+  // Check if asset is marked as inactive
+  const isInactive = (asset as Asset & { is_inactive?: boolean }).is_inactive === true;
+  if (isInactive) {
     return "inactive";
   }
 
+  // Otherwise derive from lifecycle (warranty, insurance, service dates)
   return getLifecycleStatus(asset);
 }
 
@@ -189,6 +210,7 @@ export function calculateAssetCounts(assets: Asset[]) {
       active: 0,
       expired: 0,
       dueSoon: 0,
+      inWarranty: 0,
       inactive: 0,
     }
   );
@@ -201,10 +223,16 @@ export function assetMatchesFilter(asset: Asset, filter: AssetFilter | string): 
   return getAssetStatus(asset) === normalized;
 }
 
+/**
+ * Returns the exact DB status master label for this asset.
+ * Derived internal codes are mapped 1-to-1 to the DB status_master names.
+ * This is the single mapping layer — all UI display, filters, and counts use this.
+ */
 export function getAssetStatusLabel(asset: Asset): string {
   const status = getAssetStatus(asset);
-  if (status === "dueSoon") return "Due Soon";
-  if (status === "inactive") return "Inactive";
-  if (status === "expired") return "Expired";
-  return "Active";
+  if (status === "dueSoon") return "Expiring Soon"; // DB value: "Expiring Soon"
+  if (status === "inactive") return "Inactive";      // DB value: "Inactive"
+  if (status === "expired") return "Expired";        // DB value: "Expired"
+  if (status === "inWarranty") return "In Warranty"; // DB value: "In Warranty"
+  return "Active";                                   // DB value: "Active"
 }
