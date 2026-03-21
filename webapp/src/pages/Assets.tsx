@@ -208,11 +208,16 @@ const Assets = () => {
   }, [navigate]);
 
   useEffect(() => {
-    const incomingState = location.state as { statusFilter?: string } | null;
-    const incomingStatusFilter = String(incomingState?.statusFilter || "");
+    const incomingState = location.state as { statusFilter?: string | string[] } | null;
+    const incomingStatusFilter = incomingState?.statusFilter;
+    const normalizedStatusFilters = Array.isArray(incomingStatusFilter)
+      ? incomingStatusFilter.map((status) => String(status || "").trim()).filter(Boolean)
+      : String(incomingStatusFilter || "").trim()
+        ? [String(incomingStatusFilter).trim()]
+        : [];
 
-    if (incomingStatusFilter) {
-      setSelectedStatuses([incomingStatusFilter]);
+    if (normalizedStatusFilters.length > 0) {
+      setSelectedStatuses(normalizedStatusFilters);
       setPage(0);
       window.history.replaceState({}, document.title);
     }

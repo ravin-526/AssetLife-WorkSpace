@@ -114,6 +114,18 @@ type UpcomingWindowItem = {
   date: Date;
 };
 
+const INACTIVE_STATUS_GROUP = ["Inactive", "Lost", "Damaged"] as const;
+const STATUS_DONUT_GRADIENTS: Record<string, { start: string; end: string }> = {
+  Active: { start: "#22c55e", end: "#16a34a" },
+  "In Warranty": { start: "#17a2b8", end: "#0d6efd" },
+  "Expiring Soon": { start: "#f59e0b", end: "#d97706" },
+  Expired: { start: "#ef4444", end: "#dc2626" },
+  Inactive: { start: "#6b7280", end: "#4b5563" },
+  Lost: { start: "#8b5cf6", end: "#6366f1" },
+  Damaged: { start: "#ec4899", end: "#db2777" },
+};
+const DEFAULT_STATUS_DONUT_GRADIENT = { start: "#17a2b8", end: "#0d6efd" };
+
 const toStartOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate());
 
 const parseUnknownObject = (value: unknown): Record<string, unknown> | null => {
@@ -269,6 +281,8 @@ const Dashboard = () => {
       }
     });
 
+    counts.Inactive = INACTIVE_STATUS_GROUP.reduce((total, status) => total + (counts[status] || 0), 0);
+
     return counts;
   }, [assets]);
 
@@ -303,7 +317,7 @@ const Dashboard = () => {
       },
       ...STATUS_OPTIONS.filter((status) => status !== "Lost" && status !== "Damaged").map((status) => ({
         key: status,
-        label: status,
+        label: status === "Inactive" ? "Others" : status,
         value: summary[status] || 0,
         color: toCardColor(status),
         icon: toCardIcon(status),
@@ -594,32 +608,24 @@ const Dashboard = () => {
       return <Typography variant="body2" color="text.secondary">No data available.</Typography>;
     }
 
-    const getStatusColor = (label: string): string => {
-      const lowerLabel = label.toLowerCase();
-      if (lowerLabel.includes("active") && !lowerLabel.includes("inactive")) {
-        return "#28a745"; // Green - success
-      }
-      if (lowerLabel.includes("inactive")) {
-        return "#6c757d"; // Grey - inactive
-      }
-      if (lowerLabel.includes("expired")) {
-        return "#dc3545"; // Red - error
-      }
-      if (lowerLabel.includes("due") || lowerLabel.includes("pending")) {
-        return "#ffc107"; // Orange - warning
-      }
-      return "#17a2b8"; // Teal - default/info
-    };
-
     const chartData = rows.map((row) => ({
       name: row.label,
       value: row.count,
-      fill: getStatusColor(row.label),
+      gradient: STATUS_DONUT_GRADIENTS[row.label] || DEFAULT_STATUS_DONUT_GRADIENT,
+      gradientId: `status-grad-${row.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     }));
 
     return (
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
+          <defs>
+            {chartData.map((entry) => (
+              <linearGradient key={entry.gradientId} id={entry.gradientId} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={entry.gradient.start} />
+                <stop offset="100%" stopColor={entry.gradient.end} />
+              </linearGradient>
+            ))}
+          </defs>
           <Pie
             data={chartData}
             cx="50%"
@@ -633,11 +639,19 @@ const Dashboard = () => {
             animationEasing="ease-out"
           >
             {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.fill} />
+              <Cell key={`cell-${index}`} fill={`url(#${entry.gradientId})`} />
             ))}
           </Pie>
           <ChartTooltip formatter={(value) => `${value}`} />
-          <Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+          <Legend
+            wrapperStyle={{ fontSize: "0.75rem" }}
+            payload={chartData.map((entry) => ({
+              value: entry.name,
+              type: "square",
+              color: entry.gradient.start,
+              id: entry.name,
+            }))}
+          />
         </PieChart>
       </ResponsiveContainer>
     );
@@ -650,7 +664,11 @@ const Dashboard = () => {
 
   const handleCardClick = (cardKey: SummaryCardConfig["key"]) => {
     const card = summaryCards.find((item) => item.key === cardKey);
-    const statusFilter = cardKey === "total" ? "" : String(card?.label || "");
+    const statusFilter = cardKey === "Inactive"
+      ? [...INACTIVE_STATUS_GROUP]
+      : cardKey === "total"
+        ? ""
+        : String(card?.label || "");
 
     navigate("/assets", {
       state: {

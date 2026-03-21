@@ -22,6 +22,7 @@ type ProfileData = {
   phone: string;
   organization: string;
   role: string;
+  theme_preference: "light" | "dark";
 };
 
 const EMPTY_PROFILE: ProfileData = {
@@ -31,6 +32,7 @@ const EMPTY_PROFILE: ProfileData = {
   phone: "",
   organization: "",
   role: "",
+  theme_preference: "light",
 };
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -123,6 +125,7 @@ const Profile = () => {
             phone: String(payload.phone ?? user?.phone ?? ""),
             organization: String(payload.organization ?? ""),
             role: String(payload.role ?? user?.role ?? "individual"),
+            theme_preference: payload.theme_preference === "dark" ? "dark" : "light",
           };
           setProfile(resolvedProfile);
           setDraft(resolvedProfile);
@@ -132,6 +135,7 @@ const Profile = () => {
             email: resolvedProfile.email,
             phone: resolvedProfile.phone,
             role: resolvedProfile.role,
+            theme_preference: resolvedProfile.theme_preference,
           });
         } else {
           const userId = resolvedUserId;
@@ -154,6 +158,7 @@ const Profile = () => {
             phone: String(payload.mobile ?? user?.phone ?? ""),
             organization: String((user?.organization as string | undefined) ?? ""),
             role: String(payload.role ?? user?.role ?? "user"),
+            theme_preference: user?.theme_preference === "dark" ? "dark" : "light",
           };
 
           setProfile(resolvedProfile);
@@ -250,6 +255,7 @@ const Profile = () => {
           email: updated.email,
           phone: updated.phone,
           role: updated.role,
+          theme_preference: updated.theme_preference,
         });
       } else {
         if (!profile.id && !resolvedUserId) {
@@ -284,6 +290,7 @@ const Profile = () => {
           name: updated.name,
           phone: updated.phone,
           role: updated.role,
+          theme_preference: updated.theme_preference,
         });
       }
 

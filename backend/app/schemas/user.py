@@ -47,6 +47,7 @@ class UserResponse(BaseModel):
     dob: str
     pan: str
     is_active: bool
+    theme_preference: str | None = None
     created_at: datetime
     updated_at: datetime
 

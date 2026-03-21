@@ -33,6 +33,7 @@ type VerifyOtpResponse = {
     email?: string;
     phone?: string;
     role?: string;
+    theme_preference?: "light" | "dark";
   };
   message?: string;
 };

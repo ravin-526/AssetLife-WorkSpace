@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
-from app.core.crypto import hash_value
+from app.core.crypto import decrypt_value, hash_value
 from app.core.exceptions import AuthenticationError, NotFoundError
 from app.core.jwt import create_access_token
 from app.db.mongo import get_db
@@ -13,6 +14,22 @@ from app.services.otp_service import otp_service
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+def _normalize_theme_preference(value: Any) -> str:
+    normalized = str(value or "light").strip().lower()
+    return "dark" if normalized == "dark" else "light"
+
+
+def _build_individual_auth_user(user: dict[str, Any], user_id: str) -> dict[str, str | None]:
+    return {
+        "id": user_id,
+        "name": decrypt_value(user.get("encrypted_name", "")) if user.get("encrypted_name") else "",
+        "email": decrypt_value(user.get("encrypted_email", "")) if user.get("encrypted_email") else "",
+        "phone": decrypt_value(user.get("encrypted_mobile", "")) if user.get("encrypted_mobile") else "",
+        "role": "individual",
+        "theme_preference": _normalize_theme_preference(user.get("theme_preference")),
+    }
 
 
 class SendOtpRequest(BaseModel):
@@ -97,7 +114,7 @@ async def send_otp(payload: SendOtpRequest, db=Depends(get_db)) -> dict[str, str
 
 
 @router.post("/verify-otp")
-async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str, str]:
+async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str, Any]:
     collection = db["individual_users"]
     mobile_hash = hash_value(payload.mobile)
 
@@ -128,4 +145,5 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
     return {
         "message": "OTP verified successfully",
         "access_token": token,
+        "user": _build_individual_auth_user(user, user_id),
     }

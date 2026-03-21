@@ -58,6 +58,15 @@ import {
 type AddAssetMethod = "email_sync" | "invoice_upload" | "excel_upload" | "barcode_qr" | "manual_entry";
 type ActivityStepState = "completed" | "in_progress" | "pending";
 
+const MODE_TO_METHOD_MAP: Record<string, AddAssetMethod> = {
+  email: "email_sync",
+  invoice: "invoice_upload",
+  excel: "excel_upload",
+  qr: "barcode_qr",
+  barcode: "barcode_qr",
+  manual: "manual_entry",
+};
+
 type ScanSummary = {
   emailsScanned: number;
   invoiceEmails: number;
@@ -362,7 +371,9 @@ const AddAsset = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const method = params.get("method");
+    const mode = String(params.get("mode") || "").trim().toLowerCase();
+    const methodParam = String(params.get("method") || "").trim();
+    const method = MODE_TO_METHOD_MAP[mode] || methodParam;
     const validMethod = method === "email_sync"
       || method === "invoice_upload"
       || method === "excel_upload"

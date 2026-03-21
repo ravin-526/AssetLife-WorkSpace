@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { CssBaseline, GlobalStyles, ThemeProvider } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import AdminLayout from "./components/AdminLayout.tsx";
 import PrivateRoute from "./components/PrivateRoute.tsx";
@@ -18,9 +18,14 @@ import Reminders from "./pages/Reminders.tsx";
 import Reports from "./pages/Reports.tsx";
 import Settings from "./pages/Settings.tsx";
 import Users from "./pages/Users.tsx";
+import api from "./services/api.ts";
+import useUserStore from "./store/userStore.ts";
 import { getTheme } from "./styles/theme";
 
-const THEME_MODE_STORAGE_KEY = "assetlife-theme-mode";
+type JwtPayload = {
+  sub?: string;
+  role?: string;
+};
 
 const getPageTitle = (pathname: string) => {
   const titleMap: Record<string, string> = {
@@ -53,19 +58,50 @@ const DocumentTitleManager = () => {
   return null;
 };
 
+const parseJwtPayload = (token: string): JwtPayload | null => {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) {
+      return null;
+    }
+
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = window.atob(base64);
+    return JSON.parse(json) as JwtPayload;
+  } catch {
+    return null;
+  }
+};
+
 const App = () => {
-  const [mode, setMode] = useState<"light" | "dark">(() => {
-    const storedMode = localStorage.getItem(THEME_MODE_STORAGE_KEY);
-    return storedMode === "dark" ? "dark" : "light";
-  });
+  const mode = useUserStore((state) => state.themePreference);
+  const token = useUserStore((state) => state.token) ?? localStorage.getItem("access_token") ?? localStorage.getItem("jwt_token");
+  const user = useUserStore((state) => state.user);
+  const updateUser = useUserStore((state) => state.updateUser);
+  const setThemePreference = useUserStore((state) => state.setThemePreference);
   const theme = useMemo(() => getTheme(mode), [mode]);
 
-  useEffect(() => {
-    localStorage.setItem(THEME_MODE_STORAGE_KEY, mode);
-  }, [mode]);
-
   const handleToggleTheme = () => {
-    setMode((prev) => (prev === "light" ? "dark" : "light"));
+    const nextMode = mode === "light" ? "dark" : "light";
+    setThemePreference(nextMode);
+
+    const jwtPayload = token ? parseJwtPayload(token) : null;
+    const resolvedUserId = String(user?.id ?? jwtPayload?.sub ?? "").trim();
+    const resolvedRole = String(user?.role ?? jwtPayload?.role ?? "").trim().toLowerCase();
+
+    if (!token || resolvedRole !== "individual" || !resolvedUserId) {
+      return;
+    }
+
+    void api.put(
+      "/individual/update",
+      { theme_preference: nextMode },
+      { params: { user_id: resolvedUserId } }
+    ).then(() => {
+      updateUser({ theme_preference: nextMode });
+    }).catch((requestError: unknown) => {
+      console.error("Failed to persist theme preference", requestError);
+    });
   };
 
   return (

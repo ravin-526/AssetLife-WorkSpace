@@ -20,6 +20,23 @@ from app.services.otp_service import otp_service
 router = APIRouter(prefix="/individual", tags=["Individual"])
 
 
+def _normalize_theme_preference(value: Any) -> str:
+    normalized = str(value or "light").strip().lower()
+    return "dark" if normalized == "dark" else "light"
+
+
+def _build_individual_profile_response(user: dict[str, Any], user_id: str, role: str) -> dict[str, str | None]:
+    return {
+        "id": user_id,
+        "name": decrypt_value(user.get("encrypted_name", "")) if user.get("encrypted_name") else "",
+        "email": decrypt_value(user.get("encrypted_email", "")) if user.get("encrypted_email") else "",
+        "phone": decrypt_value(user.get("encrypted_mobile", "")) if user.get("encrypted_mobile") else "",
+        "organization": None,
+        "role": role,
+        "theme_preference": _normalize_theme_preference(user.get("theme_preference")),
+    }
+
+
 class IndividualRegisterRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     mobile: str = Field(min_length=10, max_length=15)
@@ -93,6 +110,7 @@ async def register_individual(payload: IndividualRegisterRequest, db=Depends(get
         "encrypted_dob": encrypt_value(payload.dob),
         "encrypted_pan": encrypt_value(payload.pan),
         "mobile_hash": mobile_hash,
+        "theme_preference": "light",
         "is_verified": False,
         "created_at": now,
         "updated_at": now,
@@ -146,7 +164,7 @@ async def send_otp(payload: SendOtpRequest, db=Depends(get_db)) -> dict[str, str
 
 
 @router.post("/verify-otp")
-async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str, str]:
+async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str, Any]:
     collection = db["individual_users"]
     mobile_hash = hash_value(payload.mobile)
 
@@ -184,6 +202,7 @@ async def verify_otp(payload: VerifyOtpRequest, db=Depends(get_db)) -> dict[str,
     return {
         "message": "OTP verified successfully",
         "access_token": token,
+        "user": _build_individual_profile_response(user, user_id, "individual"),
     }
 
 
@@ -205,14 +224,7 @@ async def get_individual_profile(
     if not user:
         raise NotFoundError("Individual user not found")
 
-    return {
-        "id": current_user["id"],
-        "name": decrypt_value(user.get("encrypted_name", "")) if user.get("encrypted_name") else "",
-        "email": decrypt_value(user.get("encrypted_email", "")) if user.get("encrypted_email") else "",
-        "phone": decrypt_value(user.get("encrypted_mobile", "")) if user.get("encrypted_mobile") else "",
-        "organization": None,
-        "role": current_user["role"],
-    }
+    return _build_individual_profile_response(user, current_user["id"], current_user["role"])
 
 
 @router.put("/update")
@@ -237,7 +249,7 @@ async def update_individual_user(
         payload = update_data.copy()
         payload.pop("_id", None)
 
-        allowed_fields = {"name", "email"}
+        allowed_fields = {"name", "email", "theme_preference"}
         unknown_fields = set(payload.keys()) - allowed_fields
         if unknown_fields:
             raise HTTPException(status_code=400, detail=f"Unsupported fields: {', '.join(sorted(unknown_fields))}")
@@ -256,19 +268,15 @@ async def update_individual_user(
                 raise HTTPException(status_code=400, detail="Please enter a valid email")
             update_payload["encrypted_email"] = encrypt_value(email)
 
+        if "theme_preference" in payload:
+            update_payload["theme_preference"] = _normalize_theme_preference(payload["theme_preference"])
+
         await collection.update_one({"_id": object_id}, {"$set": update_payload})
         updated_user = await collection.find_one({"_id": object_id})
         if not updated_user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        return {
-            "id": user_id,
-            "name": decrypt_value(updated_user.get("encrypted_name", "")) if updated_user.get("encrypted_name") else "",
-            "email": decrypt_value(updated_user.get("encrypted_email", "")) if updated_user.get("encrypted_email") else "",
-            "phone": decrypt_value(updated_user.get("encrypted_mobile", "")) if updated_user.get("encrypted_mobile") else "",
-            "organization": None,
-            "role": _current_user["role"],
-        }
+        return _build_individual_profile_response(updated_user, user_id, _current_user["role"])
     except HTTPException:
         raise
     except Exception as error:

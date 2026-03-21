@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar,
   Box,
-  Fab,
   Button,
   Collapse,
   Drawer,
@@ -19,6 +18,8 @@ import {
   Tooltip,
   Typography,
   useMediaQuery,
+  SpeedDial,
+  SpeedDialAction,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -118,10 +119,19 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [activePath, setActivePath] = useState("/dashboard");
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
+  const [addAssetDialOpen, setAddAssetDialOpen] = useState(false);
   const [assetsMenuOpen, setAssetsMenuOpen] = useState(true);
   const [addAssetsMenuOpen, setAddAssetsMenuOpen] = useState(true);
   const [expandedDrawerWidth, setExpandedDrawerWidth] = useState(SIDEBAR_WIDTH);
   const [isScrolling, setIsScrolling] = useState(false);
+
+  const addAssetActions = [
+    { name: "Manual Entry", icon: <EditOutlinedIcon />, mode: "manual" },
+    { name: "Email Sync", icon: <MailOutlineIcon />, mode: "email" },
+    { name: "Upload Invoice", icon: <ReceiptLongOutlinedIcon />, mode: "invoice" },
+    { name: "Excel Upload", icon: <TableChartOutlinedIcon />, mode: "excel" },
+    { name: "QR / Barcode Scan", icon: <QrCodeScannerOutlinedIcon />, mode: "qr" },
+  ] as const;
   const drawerPaperRef = useRef<HTMLDivElement | null>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -645,30 +655,42 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
           <Outlet />
         </Box>
 
-        <Fab
-          color="primary"
-          aria-label="Add asset"
-          onClick={() => {
-            navigate("/assets/add");
-          }}
+        <SpeedDial
+          ariaLabel="Add Asset"
+          icon={<AddIcon />}
+          onClose={() => setAddAssetDialOpen(false)}
+          onOpen={() => setAddAssetDialOpen(true)}
+          open={addAssetDialOpen}
           sx={{
             position: "fixed",
             right: { xs: 16, sm: 20, md: 24 },
             bottom: { xs: 16, sm: 20, md: 24 },
             zIndex: muiTheme.zIndex.modal - 1,
-            opacity: isScrolling ? 0.1 : 0.7,
-            transform: "scale(1)",
-            boxShadow: muiTheme.shadows[8],
-            transition: "opacity 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease",
-            "&:hover": {
-              opacity: 1,
+            opacity: isScrolling ? 0.1 : 0.85,
+            transition: "opacity 0.25s ease",
+            "& .MuiFab-primary": {
+              boxShadow: muiTheme.shadows[8],
+              transition: "transform 0.25s ease, box-shadow 0.25s ease",
+            },
+            "& .MuiFab-primary:hover": {
               transform: "scale(1.06)",
               boxShadow: muiTheme.shadows[12],
             },
           }}
         >
-          <AddIcon />
-        </Fab>
+          {addAssetActions.map((action) => (
+            <SpeedDialAction
+              key={action.name}
+              icon={action.icon}
+              tooltipTitle={action.name}
+              tooltipOpen={isSmallScreen}
+              onClick={() => {
+                setAddAssetDialOpen(false);
+                navigate(`/assets/add?mode=${action.mode}`);
+              }}
+            />
+          ))}
+        </SpeedDial>
       </Box>
     </Box>
   );
