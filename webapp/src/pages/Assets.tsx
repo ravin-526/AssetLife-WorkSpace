@@ -40,6 +40,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import AssetPreviewModal from "../components/modules/AssetPreviewModal.tsx";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
+import { getCriticalAssets } from "../utils/assetFilters.ts";
 import {
   Asset,
   AssetLifecyclePayload,
@@ -87,6 +88,7 @@ const Assets = () => {
   const [parsingMessage, setParsingMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [criticalOnlyFilter, setCriticalOnlyFilter] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [warrantyFilter, setWarrantyFilter] = useState("");
@@ -208,13 +210,23 @@ const Assets = () => {
   }, [navigate]);
 
   useEffect(() => {
-    const incomingState = location.state as { statusFilter?: string | string[] } | null;
+    const incomingState = location.state as { statusFilter?: string | string[]; filterType?: string } | null;
     const incomingStatusFilter = incomingState?.statusFilter;
+    const incomingFilterType = String(incomingState?.filterType || "").trim().toLowerCase();
     const normalizedStatusFilters = Array.isArray(incomingStatusFilter)
       ? incomingStatusFilter.map((status) => String(status || "").trim()).filter(Boolean)
       : String(incomingStatusFilter || "").trim()
         ? [String(incomingStatusFilter).trim()]
         : [];
+
+    if (incomingFilterType === "critical") {
+      setCriticalOnlyFilter(true);
+      setPage(0);
+      window.history.replaceState({}, document.title);
+      return;
+    }
+
+    setCriticalOnlyFilter(false);
 
     if (normalizedStatusFilters.length > 0) {
       setSelectedStatuses(normalizedStatusFilters);
@@ -235,6 +247,7 @@ const Assets = () => {
 
   const handleClearFilters = () => {
     setSearchQuery("");
+    setCriticalOnlyFilter(false);
     setSelectedStatuses([]);
     setSelectedSources([]);
     setWarrantyFilter("");
@@ -1167,7 +1180,9 @@ const Assets = () => {
     const fromDate = purchaseDateFrom ? parseYMD(purchaseDateFrom) : null;
     const toDate = purchaseDateTo ? parseYMD(purchaseDateTo) : null;
 
-    return assets.filter((asset) => {
+    const sourceAssets = criticalOnlyFilter ? getCriticalAssets(assets, 7) : assets;
+
+    return sourceAssets.filter((asset) => {
       if (debouncedQuery) {
         const text = [asset.name, asset.brand, asset.vendor, asset.category, asset.subcategory, getAssetSourceLabel(asset)]
           .map((value) => String(value || "").toLowerCase())
@@ -1227,6 +1242,7 @@ const Assets = () => {
     });
   }, [
     assets,
+    criticalOnlyFilter,
     debouncedQuery,
     selectedStatuses,
     selectedSources,

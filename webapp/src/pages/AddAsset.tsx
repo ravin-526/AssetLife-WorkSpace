@@ -1944,7 +1944,7 @@ const AddAsset = () => {
                       ) : null}
 
                       {suggestions.length > 0 ? (
-                        <Paper variant="outlined" sx={{ height: 420, overflowY: "auto", overflowX: "auto" }}>
+                        <Paper className="grid-container" variant="outlined" sx={{ height: 420, overflowY: "auto", overflowX: "auto" }}>
                           <Box sx={{ minWidth: 860 }}>
                             <Box
                               sx={{

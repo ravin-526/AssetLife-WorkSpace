@@ -25,6 +25,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useTheme,
 } from "@mui/material";
 import BuildCircleOutlinedIcon from "@mui/icons-material/BuildCircleOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
@@ -46,6 +47,7 @@ import {
   getInsuranceEndDate,
   getServiceDueDate,
 } from "../utils/assetStatus.ts";
+import { getCriticalAssetInsights } from "../utils/assetFilters.ts";
 // Status computation moved to backend; these utilities are for alerts only
 
 // Animated Number Component
@@ -213,6 +215,7 @@ const formatDate = (value: Date | string | undefined | null) => {
 };
 
 const Dashboard = () => {
+  const theme = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -483,13 +486,11 @@ const Dashboard = () => {
   }, [assets]);
 
   const dashboardInsights = useMemo(() => {
+    const criticalInsights = getCriticalAssetInsights(assets, 7);
     const today = toStartOfDay(new Date());
     const nextSevenDays = new Date(today);
     nextSevenDays.setDate(nextSevenDays.getDate() + 7);
 
-    let expiringSoon7Days = 0;
-    let overdueService = 0;
-    let expiredInsurance = 0;
     let missingInsurance = 0;
     let missingWarranty = 0;
 
@@ -514,16 +515,7 @@ const Dashboard = () => {
         missingInsurance += 1;
       }
 
-      if (insuranceEnd && insuranceEnd < today) {
-        expiredInsurance += 1;
-      }
-
-      if (serviceDue && serviceDue < today) {
-        overdueService += 1;
-      }
-
       if (warrantyEnd && warrantyEnd >= today && warrantyEnd <= nextSevenDays) {
-        expiringSoon7Days += 1;
         upcomingInNext7Days.push({
           id: `${asset.id}-warranty-next7`,
           assetId: asset.id,
@@ -534,7 +526,6 @@ const Dashboard = () => {
       }
 
       if (insuranceEnd && insuranceEnd >= today && insuranceEnd <= nextSevenDays) {
-        expiringSoon7Days += 1;
         upcomingInNext7Days.push({
           id: `${asset.id}-insurance-next7`,
           assetId: asset.id,
@@ -555,16 +546,15 @@ const Dashboard = () => {
       }
     }
 
-    const criticalItemsThisWeek = expiringSoon7Days + overdueService + expiredInsurance;
-    const penalties = (summary["Expired"] || 0) * 20 + overdueService * 20 + missingInsurance * 10 + missingWarranty * 10;
+    const penalties = (summary["Expired"] || 0) * 20 + criticalInsights.overdueService * 20 + missingInsurance * 10 + missingWarranty * 10;
     const healthScore =
       assets.length === 0 ? 100 : Math.max(0, Math.min(100, Math.round(100 - penalties / assets.length)));
 
     return {
-      criticalItemsThisWeek,
-      expiringSoon7Days,
-      overdueService,
-      expiredInsurance,
+      criticalItemsThisWeek: criticalInsights.criticalItemsThisWeek,
+      expiringSoon7Days: criticalInsights.expiringSoon7Days,
+      overdueService: criticalInsights.overdueService,
+      expiredInsurance: criticalInsights.expiredInsurance,
       missingInsurance,
       missingWarranty,
       healthScore,
@@ -616,44 +606,56 @@ const Dashboard = () => {
     }));
 
     return (
-      <ResponsiveContainer width="100%" height={200}>
-        <PieChart>
-          <defs>
-            {chartData.map((entry) => (
-              <linearGradient key={entry.gradientId} id={entry.gradientId} x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor={entry.gradient.start} />
-                <stop offset="100%" stopColor={entry.gradient.end} />
-              </linearGradient>
-            ))}
-          </defs>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            innerRadius={50}
-            outerRadius={75}
-            paddingAngle={2}
-            dataKey="value"
-            isAnimationActive={true}
-            animationDuration={800}
-            animationEasing="ease-out"
-          >
-            {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={`url(#${entry.gradientId})`} />
-            ))}
-          </Pie>
-          <ChartTooltip formatter={(value) => `${value}`} />
-          <Legend
-            wrapperStyle={{ fontSize: "0.75rem" }}
-            payload={chartData.map((entry) => ({
-              value: entry.name,
-              type: "square",
-              color: entry.gradient.start,
-              id: entry.name,
-            }))}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+      <Box sx={{ backgroundColor: "transparent" }}>
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart style={{ background: "transparent" }}>
+            <defs>
+              {chartData.map((entry) => (
+                <linearGradient key={entry.gradientId} id={entry.gradientId} x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor={entry.gradient.start} />
+                  <stop offset="100%" stopColor={entry.gradient.end} />
+                </linearGradient>
+              ))}
+            </defs>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={75}
+              paddingAngle={2}
+              dataKey="value"
+              isAnimationActive={true}
+              animationDuration={800}
+              animationEasing="ease-out"
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={`url(#${entry.gradientId})`} />
+              ))}
+            </Pie>
+            <ChartTooltip
+              formatter={(value) => `${value}`}
+              contentStyle={{
+                backgroundColor: theme.palette.background.paper,
+                borderColor: theme.palette.divider,
+                color: theme.palette.text.primary,
+                borderRadius: 8,
+              }}
+              itemStyle={{ color: theme.palette.text.primary }}
+              labelStyle={{ color: theme.palette.text.secondary }}
+            />
+            <Legend
+              wrapperStyle={{ fontSize: "0.75rem", color: theme.palette.text.secondary, background: "transparent" }}
+              payload={chartData.map((entry) => ({
+                value: entry.name,
+                type: "square",
+                color: entry.gradient.start,
+                id: entry.name,
+              }))}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </Box>
     );
   };
 
@@ -848,7 +850,7 @@ const Dashboard = () => {
                   <Button
                     size="small"
                     variant="outlined"
-                    onClick={() => navigate("/assets")}
+                    onClick={() => navigate("/assets", { state: { filterType: "critical" } })}
                   >
                     View critical assets
                   </Button>
@@ -1124,7 +1126,7 @@ const Dashboard = () => {
               size={{ xs: 12, md: 6 }}
               sx={{ display: "flex", animation: "fadeInUp 0.4s ease-forwards", animationDelay: "0.55s" }}
             >
-              <Card elevation={1} sx={{ borderRadius: 2, width: "100%", height: 280, display: "flex", flexDirection: "column" }}>
+              <Card elevation={1} sx={{ borderRadius: 2, width: "100%", minHeight: 280, display: "flex", flexDirection: "column" }}>
                 <CardContent
                   sx={{
                     p: { xs: 2, md: 2.5 },
@@ -1135,18 +1137,57 @@ const Dashboard = () => {
                   }}
                 >
                   <Typography variant="h6" sx={{ mb: 2 }}>Distribution</Typography>
-                  <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>By Category</Typography>
-                    {renderDistributionBars(assetsByCategory, "info.main")}
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>By Status</Typography>
-                    {renderStatusDonut(assetsByStatus)}
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      gap: 3,
+                      flexWrap: "wrap",
+                      "@media (max-width: 768px)": {
+                        flexDirection: "column",
+                      },
+                    }}
+                  >
+                    <Card
+                      elevation={0}
+                      sx={{
+                        flex: 1,
+                        minWidth: 320,
+                        p: 2,
+                        borderRadius: 1.5,
+                        bgcolor: (theme) => theme.palette.background.paper,
+                        border: 1,
+                        borderColor: "divider",
+                      }}
+                    >
+                      <Typography sx={{ fontSize: "1rem", fontWeight: 600, mb: 1.5 }}>
+                        Distribution by Category
+                      </Typography>
+                      {renderDistributionBars(assetsByCategory, "info.main")}
+                    </Card>
+
+                    <Card
+                      elevation={0}
+                      sx={{
+                        flex: 1,
+                        minWidth: 320,
+                        p: 2,
+                        borderRadius: 1.5,
+                        bgcolor: (theme) => theme.palette.background.paper,
+                        border: 1,
+                        borderColor: "divider",
+                        "& .recharts-text": {
+                          fill: `${theme.palette.text.secondary} !important`,
+                        },
+                      }}
+                    >
+                      <Typography sx={{ fontSize: "1rem", fontWeight: 600, mb: 1.5 }}>
+                        Distribution by Status
+                      </Typography>
+                      {renderStatusDonut(assetsByStatus)}
+                    </Card>
+                  </Box>
+                </CardContent>
+              </Card>
             </Grid>
           </Grid>
 

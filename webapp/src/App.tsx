@@ -124,6 +124,63 @@ const App = () => {
       <CssBaseline />
       <GlobalStyles
         styles={{
+          "*": {
+            boxSizing: "border-box",
+          },
+          "*::before, *::after": {
+            boxSizing: "inherit",
+          },
+          html: {
+            WebkitTextSizeAdjust: "100%",
+            textSizeAdjust: "100%",
+            fontSize: "16px",
+          },
+          body: {
+            overflowX: "hidden",
+            minWidth: 0,
+          },
+          "img, svg, video, canvas": {
+            maxWidth: "100%",
+            height: "auto",
+          },
+          ".global-container": {
+            width: "100%",
+            maxWidth: "1200px",
+            margin: "0 auto",
+            padding: "0 16px",
+          },
+          ".grid-container, .table-container, .MuiTableContainer-root": {
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+          },
+          ".glass-surface": {
+            backgroundColor: "rgba(255, 255, 255, 0.8)",
+            WebkitBackdropFilter: "blur(4px)",
+            backdropFilter: "blur(4px)",
+          },
+          ".recharts-wrapper, .recharts-surface, .recharts-layer": {
+            background: "transparent !important",
+          },
+          ".recharts-surface": {
+            fill: "transparent !important",
+          },
+          ".recharts-wrapper svg": {
+            background: "transparent !important",
+          },
+          ".recharts-sector": {
+            background: "transparent !important",
+          },
+          ".recharts-tooltip-wrapper": {
+            background: "transparent !important",
+          },
+          ".MuiCardContent-root": {
+            backgroundColor: "inherit",
+          },
+          "@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))": {
+            ".glass-surface": {
+              backgroundColor: "rgba(255, 255, 255, 0.95)",
+            },
+          },
           "@keyframes fadeInUp": {
             from: {
               opacity: 0,
@@ -132,6 +189,30 @@ const App = () => {
             to: {
               opacity: 1,
               transform: "translateY(0)",
+            },
+          },
+          "@media (max-width: 1024px)": {
+            html: {
+              fontSize: "15px",
+            },
+            ".global-container": {
+              padding: "0 14px",
+            },
+          },
+          "@media (max-width: 768px)": {
+            html: {
+              fontSize: "14px",
+            },
+            ".global-container": {
+              padding: "0 12px",
+            },
+          },
+          "@media (max-width: 480px)": {
+            html: {
+              fontSize: "13px",
+            },
+            ".global-container": {
+              padding: "0 10px",
             },
           },
         }}
