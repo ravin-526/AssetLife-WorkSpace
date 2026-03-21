@@ -1213,6 +1213,33 @@ async def create_asset(payload: dict[str, Any], current_user: dict[str, str] = D
     now_iso = datetime.now(timezone.utc).isoformat()
     name = _text(payload.get("name") or payload.get("product_name")) or "Unnamed Asset"
     source = _normalize_asset_source(payload.get("source"))
+    suggestion_id = payload.get("suggestion_id")
+    suggestion_object_id: ObjectId | None = None
+    suggestion_item: dict[str, Any] | None = None
+
+    if suggestion_id:
+        try:
+            suggestion_object_id = ObjectId(str(suggestion_id))
+            suggestion_item = await db["asset_suggestions"].find_one(
+                {"_id": suggestion_object_id, "user_id": current_user["id"]}
+            )
+        except Exception:
+            suggestion_object_id = None
+            suggestion_item = None
+
+    suggestion_attachment_path = _text(payload.get("invoice_attachment_path"))
+    if not suggestion_attachment_path and suggestion_item:
+        suggestion_attachment_path = _text(
+            suggestion_item.get("invoice_attachment_path") or suggestion_item.get("attachment_path")
+        )
+
+    suggestion_file_name = None
+    if suggestion_item:
+        suggestion_file_name = _text(
+            suggestion_item.get("attachment_filename")
+            or suggestion_item.get("file_name")
+            or suggestion_item.get("invoice_filename")
+        )
 
     lifecycle_info = _lifecycle_payload(payload)
     enriched_service = _enrich_service_lifecycle(lifecycle_info.get("service")) if lifecycle_info else None
@@ -1254,7 +1281,7 @@ async def create_asset(payload: dict[str, Any], current_user: dict[str, str] = D
         "source_email_id": payload.get("source_email_id"),
         "source_email_sender": payload.get("source_email_sender"),
         "source_email_subject": payload.get("source_email_subject"),
-        "invoice_attachment_path": payload.get("invoice_attachment_path"),
+        "invoice_attachment_path": suggestion_attachment_path,
         "auto_reminders_created": 0,
         "created_at": now_iso,
         "updated_at": now_iso,
@@ -1263,16 +1290,36 @@ async def create_asset(payload: dict[str, Any], current_user: dict[str, str] = D
     result = await db["assets"].insert_one(document)
     asset_id = str(result.inserted_id)
 
-    suggestion_id = payload.get("suggestion_id")
     if suggestion_id:
         try:
-            object_id = ObjectId(str(suggestion_id))
+            object_id = suggestion_object_id or ObjectId(str(suggestion_id))
             await db["asset_suggestions"].update_one(
                 {"_id": object_id, "user_id": current_user["id"]},
                 {"$set": {"already_added": True, "status": "confirmed", "asset_id": asset_id, "updated_at": now_iso}},
             )
         except Exception:
             pass
+
+    if suggestion_id and suggestion_attachment_path:
+        existing_invoice_doc = await db["asset_documents"].find_one(
+            {
+                "asset_id": asset_id,
+                "user_id": current_user["id"],
+                "file_path": suggestion_attachment_path,
+            }
+        )
+        if not existing_invoice_doc:
+            invoice_file_name = suggestion_file_name or suggestion_attachment_path.split("/")[-1] or "Invoice"
+            await db["asset_documents"].insert_one(
+                {
+                    "asset_id": asset_id,
+                    "user_id": current_user["id"],
+                    "file_name": invoice_file_name,
+                    "file_path": suggestion_attachment_path,
+                    "document_type": "invoice",
+                    "uploaded_at": now_iso,
+                }
+            )
 
     reminder_count = await _create_reminders_for_lifecycle(asset_id, name, lifecycle_info, current_user["id"], db)
     if reminder_count:
@@ -1473,7 +1520,11 @@ async def upload_documents(asset_id: str, files: list[UploadFile] = File(...), c
 @router.get("/{asset_id}/documents")
 async def list_documents(asset_id: str, current_user: dict[str, str] = Depends(get_current_user), db=Depends(get_db)) -> list[dict[str, Any]]:
     docs = await db["asset_documents"].find(
-        {"asset_id": asset_id, "user_id": current_user["id"], "document_type": "supporting"}
+        {
+            "asset_id": asset_id,
+            "user_id": current_user["id"],
+            "document_type": {"$in": ["supporting", "invoice"]},
+        }
     ).sort("uploaded_at", -1).to_list(length=300)
     return [_to_document(doc) for doc in docs]
 

@@ -370,6 +370,9 @@ async def confirm_suggestion(suggestion_id: str, payload: dict[str, Any], curren
     if not item:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
+    now_iso = datetime.now(timezone.utc).isoformat()
+    suggestion_attachment_path = item.get("invoice_attachment_path") or item.get("attachment_path")
+
     # Prepare asset data with lifecycle info from suggestion
     asset = {
         "user_id": current_user["id"],
@@ -387,21 +390,50 @@ async def confirm_suggestion(suggestion_id: str, payload: dict[str, Any], curren
         "service": item.get("service_details") or None,
         "source": "email_sync",
         "source_email_id": item.get("email_message_id"),
-        "invoice_attachment_path": item.get("invoice_attachment_path"),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "invoice_attachment_path": suggestion_attachment_path,
+        "created_at": now_iso,
+        "updated_at": now_iso,
     }
     
     # Compute and add status
     asset["status"] = _compute_asset_status(asset)
 
     result = await db["assets"].insert_one(asset)
+    asset_id = str(result.inserted_id)
+
+    if suggestion_attachment_path:
+        suggestion_file_name = (
+            item.get("attachment_filename")
+            or item.get("file_name")
+            or item.get("invoice_filename")
+            or str(suggestion_attachment_path).split("/")[-1]
+            or "Invoice"
+        )
+        existing_invoice_doc = await db["asset_documents"].find_one(
+            {
+                "asset_id": asset_id,
+                "user_id": current_user["id"],
+                "file_path": suggestion_attachment_path,
+            }
+        )
+        if not existing_invoice_doc:
+            await db["asset_documents"].insert_one(
+                {
+                    "asset_id": asset_id,
+                    "user_id": current_user["id"],
+                    "file_name": suggestion_file_name,
+                    "file_path": suggestion_attachment_path,
+                    "document_type": "invoice",
+                    "uploaded_at": now_iso,
+                }
+            )
+
     await db["asset_suggestions"].update_one(
         {"_id": object_id},
-        {"$set": {"status": "confirmed", "already_added": True, "asset_id": str(result.inserted_id), "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"status": "confirmed", "already_added": True, "asset_id": asset_id, "updated_at": now_iso}},
     )
 
-    return SuggestionActionResponse(suggestion_id=suggestion_id, status="confirmed", asset_id=str(result.inserted_id))
+    return SuggestionActionResponse(suggestion_id=suggestion_id, status="confirmed", asset_id=asset_id)
 
 
 @router.get("/{suggestion_id}/email", response_model=SuggestionEmailDetailsResponse)

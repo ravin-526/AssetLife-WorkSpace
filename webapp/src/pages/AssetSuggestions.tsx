@@ -231,6 +231,7 @@ const AssetSuggestions = () => {
 
       <AssetPreviewModal
         open={isPreviewOpen}
+        isSuggestionMode
         parsingMessage={parsingMessage}
         saveLoading={saveLoading}
         suggestions={suggestions}

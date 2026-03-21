@@ -252,6 +252,7 @@ const EmailScans = () => {
       <AssetPreviewModal
         open={Boolean(selectedSuggestion)}
         suggestion={selectedSuggestion}
+        isSuggestionMode
         parsingMessage={parsingMessage}
         saveLoading={saveLoading}
         onClose={() => {

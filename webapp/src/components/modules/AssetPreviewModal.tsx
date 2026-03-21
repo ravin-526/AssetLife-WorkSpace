@@ -59,6 +59,7 @@ type UnifiedAttachment = {
 type AssetPreviewModalProps = {
   open: boolean;
   suggestion?: AssetSuggestion | null;
+  isSuggestionMode?: boolean;
   inlineMode?: boolean;
   showTitle?: boolean;
   collapseDocumentViewer?: boolean;
@@ -101,16 +102,19 @@ type AssetPreviewModalProps = {
   }) => Promise<void>;
 };
 
+const EMPTY_UPLOADED_DOCUMENTS: UploadedAssetDocument[] = [];
+
 const AssetPreviewModal = ({
   open,
   suggestion: suggestionProp = null,
+  isSuggestionMode = false,
   inlineMode = false,
   showTitle = true,
   collapseDocumentViewer = false,
   disableAttachmentAndEmailPreview = false,
   parsingMessage,
   saveLoading = false,
-  uploadedDocuments = [],
+  uploadedDocuments = EMPTY_UPLOADED_DOCUMENTS,
   uploadedDocumentsLoading = false,
   isDocumentActionLoading,
   onViewUploadedDocument,
@@ -383,6 +387,45 @@ const AssetPreviewModal = ({
         return;
       }
 
+      if (isSuggestionMode) {
+        try {
+          setEmailDetailsLoading(true);
+          setEmailDetailsError("");
+
+          const response = await getSuggestionEmailDetails(suggestion.id);
+          if (!active) {
+            return;
+          }
+
+          setEmailDetails({
+            subject: response?.subject || suggestion.subject,
+            sender: response?.sender || suggestion.sender,
+            received_date: response?.received_date || suggestion.received_date || suggestion.email_date,
+            email_body: response?.email_body || suggestion.email_body,
+            email_body_html: response?.email_body_html || suggestion.email_body_html,
+            attachments: Array.isArray(response?.attachments) ? response.attachments : [],
+          });
+        } catch (requestError: unknown) {
+          if (!active) {
+            return;
+          }
+          setEmailDetails({
+            subject: suggestion.subject,
+            sender: suggestion.sender,
+            received_date: suggestion.received_date || suggestion.email_date,
+            email_body: suggestion.email_body,
+            email_body_html: suggestion.email_body_html,
+            attachments: [],
+          });
+          setEmailDetailsError(requestError instanceof Error ? requestError.message : "Failed to load email details");
+        } finally {
+          if (active) {
+            setEmailDetailsLoading(false);
+          }
+        }
+        return;
+      }
+
       const localDetails: SuggestionEmailDetails = {
         subject: suggestion.subject,
         sender: suggestion.sender,
@@ -425,7 +468,7 @@ const AssetPreviewModal = ({
     return () => {
       active = false;
     };
-  }, [disableAttachmentAndEmailPreview, open, rightPanelTab, suggestion]);
+  }, [disableAttachmentAndEmailPreview, isSuggestionMode, open, rightPanelTab, suggestion]);
 
   useEffect(() => {
     setAttachmentError("");
@@ -599,15 +642,14 @@ const AssetPreviewModal = ({
         setAttachmentRenderError(false);
 
         let blob: Blob;
-        if (selectedAttachment?.kind === "document" && selectedAttachment?.document_id) {
+        if (selectedAttachment?.kind === "document" && selectedAttachment?.document_id && !isSuggestionMode) {
           const assetIdFromUrl = (selectedAttachment?.file_url || "").match(/\/api\/assets\/([^/]+)\/documents\//)?.[1] || selectedAttachment?.asset_id || suggestion?.id;
           if (!assetIdFromUrl) {
             throw new Error("Asset id is missing for document preview");
           }
           blob = await fetchAssetDocumentBlob(assetIdFromUrl, selectedAttachment.document_id);
         } else {
-          const source = String((suggestion as unknown as Record<string, unknown>)?.source || "").trim().toLowerCase();
-          if (source === "email_sync" && suggestion?.id && suggestion?.attachment_filename) {
+          if (isSuggestionMode && suggestion?.id) {
             blob = await fetchSuggestionAttachmentBlob(suggestion.id);
           } else {
             const assetId = selectedAttachment?.asset_id || suggestion?.id;
@@ -675,6 +717,7 @@ const AssetPreviewModal = ({
     rightPanelTab,
     selectedAttachment,
     suggestion,
+    isSuggestionMode,
   ]);
 
   useEffect(() => {
@@ -742,7 +785,7 @@ const AssetPreviewModal = ({
         return false;
       }
       const type = String(document.document_type || "").toLowerCase();
-      return !type || type === "supporting";
+      return !type || type === "supporting" || type === "invoice";
     });
   }, [locallyDeletedDocumentIds, uploadedDocuments]);
 
@@ -752,11 +795,14 @@ const AssetPreviewModal = ({
     const invoicePath = getRecordValue(sourceRecord, ["invoice_path", "invoice_attachment_path"]);
     const invoiceFileName = getRecordValue(sourceRecord, ["attachment_filename", "invoice_filename"])
       || (invoicePath ? invoicePath.split("/").pop() : undefined)
-      || "Invoice";
+      || (isSuggestionMode ? "Suggestion Attachment" : "Invoice");
     const invoiceMimeType = getRecordValue(sourceRecord, ["attachment_mime_type", "mime_type"])
       || deriveMimeTypeFromName(invoiceFileName);
 
-    if (invoicePath || suggestion?.attachment_filename || suggestion?.attachment_mime_type) {
+    const hasInvoiceMeta = Boolean(invoicePath || suggestion?.attachment_filename || suggestion?.attachment_mime_type);
+    const shouldIncludeInvoice = isSuggestionMode ? Boolean(suggestion?.id) : hasInvoiceMeta;
+
+    if (shouldIncludeInvoice) {
       result.push({
         id: `invoice-${suggestion?.id || "unknown"}`,
         file_url: "",
@@ -767,20 +813,26 @@ const AssetPreviewModal = ({
       });
     }
 
-    visibleUploadedDocuments.forEach((document) => {
-      result.push({
-        id: `document-${document.document_id}`,
-        file_url: document.file_url,
-        file_name: document.file_name,
-        mime_type: deriveMimeTypeFromName(document.file_name || ""),
-        kind: "document",
-        document_id: document.document_id,
-        asset_id: suggestion?.id,
+    if (!isSuggestionMode) {
+      visibleUploadedDocuments.forEach((document) => {
+        const type = String(document.document_type || "").toLowerCase();
+        if (type === "invoice") {
+          return;
+        }
+        result.push({
+          id: `document-${document.document_id}`,
+          file_url: document.file_url,
+          file_name: document.file_name,
+          mime_type: deriveMimeTypeFromName(document.file_name || ""),
+          kind: "document",
+          document_id: document.document_id,
+          asset_id: suggestion?.id,
+        });
       });
-    });
+    }
 
     return result;
-  }, [suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.id, suggestionRecord, visibleUploadedDocuments]);
+  }, [isSuggestionMode, suggestion?.attachment_filename, suggestion?.attachment_mime_type, suggestion?.id, suggestionRecord, visibleUploadedDocuments]);
 
   useEffect(() => {
     setAttachments(computedAttachments);
@@ -903,15 +955,14 @@ const AssetPreviewModal = ({
 
       if (selectedAttachment) {
         let blob: Blob;
-        if (selectedAttachment?.kind === "document" && selectedAttachment?.document_id) {
+        if (selectedAttachment?.kind === "document" && selectedAttachment?.document_id && !isSuggestionMode) {
           const assetIdFromUrl = (selectedAttachment?.file_url || "").match(/\/api\/assets\/([^/]+)\/documents\//)?.[1] || selectedAttachment?.asset_id || suggestion?.id;
           if (!assetIdFromUrl) {
             throw new Error("Asset id is missing for document download");
           }
           blob = await fetchAssetDocumentBlob(assetIdFromUrl, selectedAttachment.document_id);
         } else {
-          const source = String((suggestion as unknown as Record<string, unknown>)?.source || "").trim().toLowerCase();
-          if (source === "email_sync" && suggestion?.id && suggestion?.attachment_filename) {
+          if (isSuggestionMode && suggestion?.id) {
             blob = await fetchSuggestionAttachmentBlob(suggestion.id, true);
           } else {
             const assetId = selectedAttachment?.asset_id || suggestion?.id;
@@ -1908,9 +1959,11 @@ const AssetPreviewModal = ({
                         borderColor: "divider",
                         borderRadius: 1,
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        alignItems: "stretch",
+                        justifyContent: "flex-start",
                         px: 2,
+                        py: 1.5,
+                        overflowY: "auto",
                       }}
                     >
                       <Alert severity="info">Email preview is disabled for this source.</Alert>

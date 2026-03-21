@@ -1,930 +1,1023 @@
-# AssetLife — Comprehensive Technical Summary
+# AssetLife Technical Summary
 
-> **Last updated:** current session  
-> This document is the canonical developer reference for the AssetLife workspace. It covers all 14 technical dimensions of the project. Keep it updated whenever significant architectural changes are made.
+Last updated: 21 March 2026
 
----
+This document is the authoritative technical reference for the current repository state. It is based on direct inspection of backend, webapp, and mobile modules.
 
 ## 1. Project Overview
 
-**AssetLife** is a personal asset lifecycle management platform. It allows individual users to track, manage, and receive reminders about their owned assets throughout their full lifecycle (purchase → warranty → insurance → service → disposal).
+### Purpose
+AssetLife is an asset lifecycle management platform centered on individual users. It tracks owned assets and lifecycle events (warranty, insurance, service), supports email-driven asset suggestion workflows, document attachments, reminders, and category/status master data.
 
-### Core Capabilities
-| Capability | Description |
-|---|---|
-| Asset CRUD | Create, read, update, delete physical and financial assets |
-| Email Sync | Connect Gmail, scan invoices from emails, auto-generate asset suggestions |
-| Excel Upload | Bulk asset import via downloadable template |
-| Invoice Upload | Upload invoice PDFs/images; OCR extraction of asset metadata |
-| Barcode/QR Scan | Scan-to-add asset creation entry point (frontend UI only, mobile-ready intent) |
-| Lifecycle Tracking | Warranty, insurance, and service schedule fields per asset |
-| Reminders | Date-based reminders tied to asset lifecycle events |
-| Document Management | Attach and retrieve documents per asset |
-| Category System | 12 top-level categories with typed subcategories; seeded on startup |
-| User Management | Admin/super-admin CRUD over user accounts; role-based access |
-| OTP Auth | 6-digit OTP-based login for individual users |
+### Core Features Implemented
+- Individual registration and OTP login.
+- Admin/user role model and admin user CRUD endpoints.
+- Asset CRUD with lifecycle metadata.
+- Auto status computation based on lifecycle and inactive state.
+- Reminder CRUD plus auto-created lifecycle reminders on asset create/update.
+- Gmail OAuth integration and mailbox sync.
+- Email scan pipeline that detects invoice emails and creates asset suggestions.
+- Suggestion parse/confirm/reject flow.
+- Invoice and document file storage + streaming endpoints.
+- Excel template download and Excel upload validation/preview pipeline.
+- Category/subcategory master data APIs.
+- Status master API with seeded defaults.
+- React web application with protected routes, dashboard, assets workflows, reminders, profile/settings screens.
 
-### Three-Tier Workspace
-```
-assetlife-workspace/
-├── backend/   Python FastAPI + Motor + MongoDB
-├── webapp/    React 18 + TypeScript + MUI + Zustand
-└── mobile/    Flutter/Dart scaffold (placeholder — not functional)
-```
+### Tech Stack
 
----
+Backend:
+- Python + FastAPI
+- Motor (MongoDB async driver)
+- Pydantic / pydantic-settings
+- python-jose (JWT)
+- passlib[bcrypt]
+- cryptography (Fernet for encryption)
+- httpx
+- openpyxl (Excel)
+- PyPDF2 + Pillow + pytesseract (invoice parsing)
+
+Frontend:
+- React 18 + TypeScript
+- react-router-dom v6
+- MUI + Emotion
+- Zustand
+- Axios
+- Recharts
+- PrimeFlex/PrimeIcons/PrimeReact (partial usage)
+
+Database:
+- MongoDB (`assetlife` by default)
+
+Integrations:
+- Gmail OAuth2 + Gmail API (`gmail.readonly`)
+- Local file storage for invoice and document binaries
+
+Mobile:
+- Flutter folder scaffold exists but is currently empty/inactive.
 
 ## 2. Project Structure
 
-### Full Directory Tree
+### Top-Level
+- `backend/`: FastAPI service, Mongo integration, business logic, file processing.
+- `webapp/`: React TypeScript frontend.
+- `mobile/`: Flutter placeholders (empty key files).
+- `PROJECT_RULES.md`: older snapshot, partially outdated.
+- `TECHNICAL_SUMMARY.md`: canonical technical reference.
 
-```
-assetlife-workspace/
-├── PROJECT_RULES.md          Legacy/partial summary (outdated — see this file)
-├── TECHNICAL_SUMMARY.md      Canonical reference (this document)
-├── README.md
-│
-├── backend/
-│   ├── requirements.txt
-│   ├── .env                  Backend environment config (gitignored)
-│   ├── logs/                 Loguru log output
-│   ├── uploads/
-│   │   ├── invoices/         Uploaded invoice files (PDFs, images)
-│   │   └── documents/        Asset document attachments
-│   └── app/
-│       ├── main.py           FastAPI app entrypoint (CORS, routers, startup)
-│       ├── api/
-│       │   └── dependencies.py  (EMPTY — reserved file, no content)
-│       ├── core/
-│       │   ├── config.py     Pydantic-settings environment loader
-│       │   ├── constants.py  Shared constants
-│       │   ├── crypto.py     AES field encryption + SHA-256 hash helpers
-│       │   ├── exceptions.py Typed API exception hierarchy + global handlers
-│       │   ├── hash.py       Hashing utilities
-│       │   ├── jwt.py        JWT creation/verification (HS256)
-│       │   ├── logger.py     Loguru logger setup
-│       │   ├── logging.py    Additional logging config
-│       │   ├── security.py   JWT Bearer auth dependency + require_roles factory
-│       │   └── status_master.py  Default asset status seeding
-│       ├── db/
-│       │   ├── base.py       Base DB helpers
-│       │   ├── indexes.py    Startup index creation + duplicate cleanup
-│       │   ├── mongo.py      MongoManager class + get_db dependency
-│       │   ├── mongodb.py    Additional MongoDB utilities
-│       │   └── session.py    Session-scoped DB helpers
-│       ├── exceptions/
-│       │   ├── custom_exceptions.py  Domain-specific exceptions
-│       │   └── handlers.py   FastAPI exception handler registration
-│       ├── models/
-│       │   ├── role.py       Role enum (SUPER_ADMIN, ADMIN, INDIVIDUAL)
-│       │   └── user.py       User domain model
-│       ├── routers/
-│       │   └── individual.py  ORPHANED — stale duplicate, not imported
-│       ├── routes/            ACTIVE route modules
-│       │   ├── auth.py
-│       │   ├── individual.py
-│       │   ├── user.py
-│       │   ├── assets.py
-│       │   ├── asset_suggestions.py
-│       │   ├── categories.py
-│       │   ├── email_scans.py
-│       │   ├── gmail_integration.py
-│       │   ├── reminders.py
-│       │   ├── statuses.py
-│       │   └── testing.py    ⚠ TEMPORARY — remove before production
-│       ├── schemas/
-│       │   ├── user.py       User request/response Pydantic schemas
-│       │   └── gmail_import.py  Gmail/asset suggestion schemas
-│       └── services/
-│           ├── asset_suggestion_service.py  Suggestion lifecycle logic
-│           ├── email_scan_service.py        Gmail message fetch + parse
-│           ├── gmail_service.py             Gmail OAuth2 token management
-│           ├── invoice_parser.py            PDF/image OCR extraction
-│           ├── otp_service.py               In-memory OTP store
-│           └── user_service.py              User CRUD + auth + PII encryption
-│
-├── webapp/
-│   ├── package.json
-│   ├── .env                  Frontend environment config (gitignored)
-│   ├── public/
-│   ├── build/                Production build output (gitignored)
-│   └── src/
-│       ├── index.tsx         App entry point — mounts App.tsx
-│       ├── App.tsx           ✅ ACTIVE runtime router and app shell
-│       ├── AppRoutes.tsx     ⚠ LEGACY — not active, kept for reference
-│       ├── api/
-│       │   ├── auth.ts       Auth API call wrappers
-│       │   └── axiosInstance.ts  Re-exports api.ts axios instance
-│       ├── components/
-│       │   ├── AdminLayout.tsx  Main app shell with sidebar nav
-│       │   ├── OtpInput.tsx     OTP digit input component
-│       │   ├── PrivateRoute.tsx Route guard (redirects to /login if no token)
-│       │   └── modules/
-│       │       ├── AssetPreviewModal.tsx  ✅ Asset preview/edit popup
-│       │       └── ...
-│       ├── constants/
-│       │   └── logo.ts
-│       ├── features/         ⚠ LEGACY — all files marked "Legacy component"
-│       │   ├── auth/
-│       │   └── dashboard/
-│       ├── hooks/
-│       │   └── useAutoDismissMessage.ts
-│       ├── pages/            ✅ ACTIVE page components
-│       │   ├── IndividualLogin.tsx
-│       │   ├── IndividualRegister.tsx
-│       │   ├── Dashboard.tsx
-│       │   ├── AddAsset.tsx
-│       │   ├── Assets.tsx
-│       │   ├── AssetView.tsx
-│       │   ├── AssetSuggestions.tsx
-│       │   ├── EmailIntegrations.tsx
-│       │   ├── EmailScans.tsx
-│       │   ├── Reminders.tsx
-│       │   ├── Reports.tsx         ⚠ Empty content placeholder
-│       │   ├── Users.tsx
-│       │   ├── Profile.tsx
-│       │   └── Settings.tsx
-│       ├── routes/
-│       ├── services/
-│       │   ├── api.ts        Axios instance + auth interceptors
-│       │   ├── gmail.ts      All asset/suggestion/Gmail API calls + TypeScript types
-│       │   └── reminders.ts  Reminder API calls
-│       ├── store/
-│       │   └── userStore.ts  Zustand auth store
-│       ├── styles/
-│       │   ├── theme.ts
-│       │   └── theme.js
-│       └── utils/
-│           └── assetStatus.ts
-│
-└── mobile/
-    ├── pubspec.yaml          EMPTY — not configured
-    └── lib/
-        ├── main.dart         EMPTY — not functional
-        └── features/
-            ├── asset/asset_routes.dart
-            └── auth/auth_routes.dart
-```
+### Backend Structure
+- `backend/app/main.py`: app bootstrap, CORS, router registration, startup/shutdown.
+- `backend/app/core/`: config, jwt/security, crypto, exception framework, status master, logging.
+- `backend/app/db/`: Mongo manager and index bootstrapping.
+- `backend/app/models/`: role enum and user DB model.
+- `backend/app/routes/`: all active API route modules.
+- `backend/app/services/`: OTP, user, Gmail, email scan, invoice parser, suggestion service.
+- `backend/app/schemas/`: request/response contracts for auth/user/Gmail/suggestions.
+- `backend/uploads/`: stored invoices and supporting documents.
 
----
+### Webapp Structure
+- `webapp/src/index.tsx`: app entry.
+- `webapp/src/App.tsx`: active route tree and theme wrapper.
+- `webapp/src/components/`: layout, private route, OTP input, modal components.
+- `webapp/src/pages/`: active pages.
+- `webapp/src/services/`: API client and service wrappers.
+- `webapp/src/store/`: Zustand auth/user store.
+- `webapp/src/utils/`: status/lifecycle utility helpers.
+- `webapp/src/features/`: legacy components (not active runtime path).
+- `webapp/src/AppRoutes.tsx`: legacy router (explicitly marked legacy).
+
+### Mobile Structure
+- `mobile/pubspec.yaml`: empty.
+- `mobile/lib/main.dart`: empty.
+- `mobile/lib/app.dart`: empty.
+- `mobile/lib/features/...`: empty placeholders.
 
 ## 3. Backend Architecture
 
-### Technology Stack
-| Component | Library / Version |
-|---|---|
-| Language | Python 3.11+ |
-| Framework | FastAPI |
-| ASGI Server | Uvicorn |
-| DB Driver | Motor (async MongoDB) |
-| ODM / Validation | Pydantic v2 + pydantic-settings |
-| JWT | python-jose (HS256) |
-| Password Hashing | passlib[bcrypt] |
-| Field Encryption | cryptography (AES) |
-| Logging | loguru |
-| Excel Parsing | openpyxl |
-| PDF/OCR | PyPDF2, Pillow, pytesseract |
-| HTTP Client | httpx |
-| Database | MongoDB (database name: `assetlife`) |
+### Framework and Runtime
+- FastAPI application in `main.py`.
+- Startup:
+  - connect Mongo
+  - ensure indexes
+  - ensure default status master rows
+- Shutdown:
+  - disconnect Mongo
+- Health endpoint: `GET /health`.
 
-### Application Lifecycle (`main.py`)
-1. FastAPI app created
-2. CORS middleware registered — `allow_origins=["http://localhost:3000"]`, all methods, all headers, credentials allowed
-3. Exception handlers registered
-4. All 11 routers included
-5. **Startup**: Connect MongoDB → ensure indexes → seed default statuses
-6. **Shutdown**: Disconnect MongoDB
+### Module Responsibilities
 
-### Layered Architecture
-```
-HTTP Request
-    ↓
-CORS Middleware
-    ↓
-JWT Bearer Auth (security.py → get_current_user)
-    ↓
-Router (routes/*.py) — validates request, delegates to service
-    ↓
-Service (services/*.py) — business logic, DB calls
-    ↓
-MongoDB (via Motor async driver)
-```
+Core:
+- `config.py`: environment-backed settings.
+- `jwt.py`: create/verify access tokens.
+- `security.py`: HTTP Bearer auth + role checks.
+- `crypto.py`: Fernet encryption/decryption + SHA-256 helpers.
+- `exceptions.py`: custom API exception classes and JSON error handlers.
+- `status_master.py`: seed and validate status values.
 
-### Error Response Format
-All errors return a consistent JSON envelope:
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable description"
-  }
-}
-```
+DB layer:
+- `mongo.py`: singleton Mongo manager and `get_db()` dependency.
+- `indexes.py`: collection index creation + duplicate cleanup logic.
 
-### Exception Types
-| Class | HTTP Status |
-|---|---|
-| `BadRequestError` | 400 |
-| `AuthenticationError` | 401 |
-| `AuthorizationError` | 403 |
-| `NotFoundError` | 404 |
-| `ConflictError` | 409 |
-| Unhandled exception | 500 (`INTERNAL_SERVER_ERROR`) |
+Services:
+- `user_service.py`: user CRUD/auth; field encryption; uniqueness checks.
+- `otp_service.py`: in-memory OTP generation/verify + rate limiting.
+- `gmail_service.py`: Gmail OAuth state, token exchange/refresh, Gmail API calls.
+- `email_scan_service.py`: mailbox scanning, attachment scoring/parsing, suggestion creation.
+- `asset_suggestion_service.py`: dedupe checks and suggestion persistence.
+- `invoice_parser.py`: attachment text extraction + field parsing + currency conversion.
 
----
+Routes:
+- `auth.py`, `individual.py`, `user.py`
+- `assets.py`, `asset_suggestions.py`
+- `email_scans.py`, `gmail_integration.py`
+- `categories.py`, `statuses.py`, `reminders.py`
+- `testing.py` (temporary destructive endpoint)
+
+### Middleware and Authentication
+- CORS middleware configured in app (`allow_origins=["http://localhost:3000"]`, credentials true, all methods/headers).
+- Authentication:
+  - HTTP Bearer token
+  - JWT payload requires `sub` and `role`
+- Authorization:
+  - route-level role dependencies via `require_roles(...)`
+  - ownership checks for user-scoped resources in route handlers
+
+### Error Handling Strategy
+- Domain exceptions (`BadRequestError`, `AuthenticationError`, `AuthorizationError`, `NotFoundError`, `ConflictError`) mapped to structured JSON.
+- Unhandled exceptions mapped to 500 with `INTERNAL_SERVER_ERROR` code.
+- Some routes also raise raw `HTTPException` with route-specific details.
 
 ## 4. API Endpoints
 
-All endpoints are served from the FastAPI backend (default: `http://localhost:8000`).
+All backend routes are currently mounted in `main.py`.
 
-### Authentication — `/auth`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| POST | `/auth/login/admin` | No | Admin login with username + password; returns JWT |
-| POST | `/auth/login/individual` | No | Legacy individual login (uses static OTP code) |
-| POST | `/auth/send-otp` | No | Send OTP for individual login (prints to terminal) |
-| POST | `/auth/verify-otp` | No | Verify OTP; returns JWT |
+### Auth Routes (`/auth`)
 
-### Individual Users — `/individual`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| POST | `/individual/register` | No | Register new individual user |
-| POST | `/individual/send-otp` | No | Send OTP (prints to terminal in dev) |
-| POST | `/individual/verify-otp` | No | Verify OTP; returns JWT |
-| GET | `/individual/profile` | JWT | Get own profile |
-| PUT | `/individual/update` | JWT | Update own profile |
+#### POST `/auth/login/admin`
+- Purpose: Admin/SuperAdmin login.
+- Request payload:
+  - `username: string`
+  - `password: string`
+- Response:
+  - `access_token`
+  - `token_type` (`bearer`)
+  - `expires_in`
+  - `user` (UserResponse)
+- Auth required: No.
+- Business rules:
+  - user must exist in `users` with admin role.
+  - password checked via bcrypt.
+- Validation:
+  - schema-based via `AdminLoginRequest`.
 
-### Admin Users — `/users`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| POST | `/users` | SUPER_ADMIN / ADMIN | Create user |
-| GET | `/users` | SUPER_ADMIN / ADMIN | List all users |
-| GET | `/users/{user_id}` | JWT (self or admin) | Get user by ID |
-| PUT | `/users/{user_id}` | JWT (self or admin) | Update user |
-| DELETE | `/users/{user_id}` | SUPER_ADMIN | Delete user |
+#### POST `/auth/login/individual`
+- Purpose: legacy individual login (static OTP flow through users collection).
+- Request payload:
+  - `mobile`
+  - `otp`
+- Response:
+  - token envelope (same as admin login)
+- Auth required: No.
+- Business rules:
+  - compares OTP to `settings.OTP_STATIC_CODE`.
+  - looks for `role=Individual` in `users` collection.
+- Validation:
+  - schema-based via `IndividualLoginRequest`.
 
-### Assets — `/api/assets`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| GET | `/api/assets` | JWT | List authenticated user's assets |
-| POST | `/api/assets` | JWT | Create new asset |
-| GET | `/api/assets/{asset_id}` | JWT | Get single asset |
-| PUT | `/api/assets/{asset_id}` | JWT | Update asset |
-| DELETE | `/api/assets/{asset_id}` | JWT | Delete asset (+ associated files) |
-| GET | `/api/assets/{asset_id}/invoice` | JWT | Stream invoice file |
-| POST | `/api/assets/{asset_id}/documents` | JWT | Upload document(s) to asset |
-| GET | `/api/assets/{asset_id}/documents` | JWT | List asset documents |
-| GET | `/api/assets/{asset_id}/documents/{document_id}/file` | JWT | Stream document file |
-| DELETE | `/api/assets/{asset_id}/documents/{document_id}` | JWT | Delete document |
-| GET | `/api/assets/excel/template` | JWT | Download Excel upload template |
-| POST | `/api/assets/excel/upload` | JWT | Bulk import assets from Excel file |
+#### POST `/auth/send-otp`
+- Purpose: Send OTP for existing individual user (hash lookup).
+- Request payload:
+  - `mobile` (digits only, length 10-15)
+- Response:
+  - `{ "message": "OTP sent successfully" }`
+- Auth required: No.
+- Business rules:
+  - user must exist in `individual_users` by `mobile_hash`.
+  - rate limit: max 5 requests / 5 minutes.
+  - OTP generated and printed in server logs/console.
+- Validation:
+  - field validator strips spaces and enforces numeric.
 
-### Asset Suggestions — `/api/assets/suggestions`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| GET | `/api/assets/suggestions` | JWT | List pending suggestions for user |
-| POST | `/api/assets/suggestions/clear-temp` | JWT | Clear temporary/rejected suggestions |
-| POST | `/api/assets/suggestions/{suggestion_id}/parse` | JWT | Parse invoice attachment; enrich suggestion fields |
-| POST | `/api/assets/suggestions/{suggestion_id}/reject` | JWT | Reject suggestion |
-| POST | `/api/assets/suggestions/{suggestion_id}/confirm` | JWT | Confirm suggestion → creates asset |
-| GET | `/api/assets/suggestions/{suggestion_id}/email` | JWT | Get original email details for suggestion |
-| GET | `/api/assets/suggestions/{suggestion_id}/attachment` | JWT | Stream suggestion invoice attachment |
+#### POST `/auth/verify-otp`
+- Purpose: Verify OTP and issue JWT.
+- Request payload:
+  - `mobile`
+  - `otp`
+- Response:
+  - success message + `access_token`
+- Auth required: No.
+- Business rules:
+  - OTP status handling: not_found/expired/invalid/valid.
+  - marks `individual_users.is_verified=true`.
+- Validation:
+  - numeric mobile, OTP length constraints.
 
-### Email Scans
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| GET | `/api/emails` | JWT | List scanned email records |
-| POST | `/api/email/scan` | JWT | Trigger Gmail sync; create suggestions from new emails |
+### Individual Routes (`/individual`)
 
-### Gmail Integration — `/api/integrations/gmail`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| GET | `/api/integrations/gmail/status` | JWT | Check Gmail connection status |
-| POST | `/api/integrations/gmail/connect` | JWT | Initiate Gmail OAuth2 flow; returns redirect URL |
-| POST | `/api/integrations/gmail/callback` | JWT | Handle OAuth2 callback (API POST variant) |
-| GET | `/api/integrations/gmail/callback` | No | Handle OAuth2 browser redirect callback |
-| POST | `/api/integrations/gmail/disconnect` | JWT | Disconnect Gmail; delete stored tokens |
+#### POST `/individual/register`
+- Purpose: Register individual account.
+- Request payload:
+  - `name` (2-120)
+  - `mobile` (digits)
+  - `email` (optional, validated if present)
+  - `dob`
+  - `pan`
+- Response:
+  - message + `user_id`
+  - includes `debug_otp` when `DEBUG=true`
+- Auth required: No.
+- Business rules:
+  - prevents duplicate by `mobile_hash`.
+  - stores encrypted fields (`encrypted_name/mobile/email/dob/pan`).
+  - creates OTP immediately.
 
-### Categories — `/api/categories`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| GET | `/api/categories` | JWT | List all categories (with subcategories) |
-| POST | `/api/categories` | JWT | Create category |
-| GET | `/api/categories/{category_id}/subcategories` | JWT | List subcategories for category |
-| POST | `/api/categories/{category_id}/subcategories` | JWT | Add subcategory |
+#### POST `/individual/send-otp`
+- Purpose: Send OTP for login/verification.
+- Request payload: `mobile`
+- Response:
+  - message (+ `debug_otp` in debug mode)
+- Auth required: No.
+- Business rules:
+  - user existence check in `individual_users`.
+  - rate limiting via OTP service.
 
-### Reminders — `/api/reminders`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| GET | `/api/reminders` | JWT | List user's reminders |
-| POST | `/api/reminders` | JWT | Create reminder |
-| PUT | `/api/reminders/{reminder_id}` | JWT | Update reminder |
-| DELETE | `/api/reminders/{reminder_id}` | JWT | Delete reminder |
+#### POST `/individual/verify-otp`
+- Purpose: Verify OTP and issue JWT.
+- Request payload: `mobile`, `otp`.
+- Response:
+  - success message + `access_token`
+- Auth required: No.
+- Business rules:
+  - marks user verified.
+  - role claim in token is `individual`.
 
-### Statuses — `/api/statuses`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| GET | `/api/statuses` | JWT | List all asset statuses |
+#### GET `/individual/profile`
+- Purpose: Read current individual profile.
+- Request payload: none.
+- Response:
+  - profile fields (`id`, `name`, `email`, `phone`, `organization`, `role`)
+- Auth required: Yes.
+- Business rules:
+  - token subject converted to ObjectId.
+  - decrypts encrypted fields before response.
 
-### Testing — `/api/testing`
-| Method | Path | Auth Required | Description |
-|---|---|---|---|
-| POST | `/api/testing/reset-user-data` | JWT | ⚠ **TEMPORARY** — Wipe all user data; remove before production |
+#### PUT `/individual/update`
+- Purpose: Update individual profile fields.
+- Request payload:
+  - query parameter: `user_id`
+  - body supports only `name` and `email`
+- Response:
+  - updated profile fields.
+- Auth required: Yes.
+- Business rules:
+  - strict allowed field set.
+  - rejects unknown fields.
+  - encrypts updated fields.
+- Validation:
+  - name length 2-120
+  - email regex check
 
----
+### User Routes (`/users`)
+
+#### POST `/users`
+- Purpose: Create user.
+- Request payload: `UserCreate` schema.
+- Response: `UserResponse`.
+- Auth required: Yes (Admin/SuperAdmin).
+- Business rules:
+  - admin/superadmin roles require username+password.
+  - uniqueness checks on username/mobile hash.
+  - personal fields encrypted.
+
+#### GET `/users`
+- Purpose: List users.
+- Query params: `skip`, `limit`.
+- Response: list of `UserResponse`.
+- Auth required: Yes (Admin/SuperAdmin).
+
+#### GET `/users/{user_id}`
+- Purpose: Fetch one user.
+- Auth required: Yes.
+- Authorization:
+  - admin roles or self.
+
+#### PUT `/users/{user_id}`
+- Purpose: Update user.
+- Payload: `UserUpdate`.
+- Auth required: Yes.
+- Authorization:
+  - admin roles or self.
+
+#### DELETE `/users/{user_id}`
+- Purpose: Delete user.
+- Auth required: Yes (Admin/SuperAdmin dependency in current code).
+
+### Assets Routes (`/api/assets`)
+
+#### GET `/api/assets`
+- Purpose: list current user assets.
+- Auth required: Yes.
+
+#### POST `/api/assets`
+- Purpose: create asset.
+- Auth required: Yes.
+- Request payload (body dict, major fields):
+  - `name` or `product_name`
+  - `category`, `subcategory` (required)
+  - optional core fields (`brand`, `vendor`, `purchase_date`, `price`, etc.)
+  - lifecycle fields under `lifecycle_info` or route-supported shape
+  - source metadata (`source`, `suggestion_id`, email references)
+- Response: created asset object.
+- Business rules:
+  - duplicate detection by invoice number / source email id / name+vendor+purchase_date.
+  - auto status compute from lifecycle + inactive flag.
+  - optional suggestion record marked confirmed.
+  - auto reminder creation from lifecycle.
+- Validation:
+  - category/subcategory required and non-empty.
+
+#### GET `/api/assets/{asset_id}`
+- Purpose: fetch one asset.
+- Auth required: Yes.
+- Validation: ObjectId check + ownership.
+
+#### PUT `/api/assets/{asset_id}`
+- Purpose: update asset.
+- Auth required: Yes.
+- Business rules:
+  - allowed field whitelist.
+  - explicit statuses `Inactive|Lost|Damaged` preserved as user-controlled.
+  - lifecycle statuses recomputed.
+  - reminder sync when lifecycle changes.
+
+#### DELETE `/api/assets/{asset_id}`
+- Purpose: delete asset and related docs/reminders.
+- Auth required: Yes.
+- Business rules:
+  - removes file binaries for documents.
+  - removes asset_documents and reminders for asset.
+
+#### GET `/api/assets/{asset_id}/invoice`
+- Purpose: stream stored invoice file.
+- Auth required: Yes.
+- Validation: ownership + path existence.
+
+#### POST `/api/assets/{asset_id}/documents`
+- Purpose: upload supporting docs.
+- Payload: multipart `files[]`.
+- Response: uploaded doc metadata list.
+- Auth required: Yes.
+
+#### GET `/api/assets/{asset_id}/documents`
+- Purpose: list supporting documents.
+- Auth required: Yes.
+
+#### GET `/api/assets/{asset_id}/documents/{document_id}/file`
+- Purpose: stream document binary.
+- Auth required: Yes.
+
+#### DELETE `/api/assets/{asset_id}/documents/{document_id}`
+- Purpose: delete document file and DB row.
+- Auth required: Yes.
+
+#### GET `/api/assets/excel/template`
+- Purpose: generate and download Excel template.
+- Auth required: Yes.
+- Business rules:
+  - builds master hidden sheet for categories/subcategories.
+  - applies field validation lists/date/number validations.
+
+#### POST `/api/assets/excel/upload`
+- Purpose: parse uploaded template and return validated suggestion rows.
+- Payload: multipart `file` (.xlsx only).
+- Response:
+  - row-level validation summary
+  - valid/invalid counts
+  - normalized `suggestions` list
+- Auth required: Yes.
+- Business rules:
+  - template header alias matching
+  - category/subcategory validation
+  - duplicate detection against existing assets
+  - lifecycle normalization from row fields
+
+### Asset Suggestions Routes (`/api/assets/suggestions`)
+
+#### GET `/api/assets/suggestions`
+- Purpose: list suggestions for user.
+- Auth required: Yes.
+- Response model: `SuggestionResponse[]`.
+
+#### POST `/api/assets/suggestions/clear-temp`
+- Purpose: clear temporary non-final suggestions.
+- Auth required: Yes.
+
+#### POST `/api/assets/suggestions/{suggestion_id}/parse`
+- Purpose: parse attachment and update extracted fields.
+- Auth required: Yes.
+- Business rules:
+  - if no attachment, returns parsed status with guidance message.
+  - uses `InvoiceParserService.parse_attachment`.
+
+#### POST `/api/assets/suggestions/{suggestion_id}/reject`
+- Purpose: mark suggestion rejected.
+- Auth required: Yes.
+
+#### POST `/api/assets/suggestions/{suggestion_id}/confirm`
+- Purpose: confirm suggestion and create asset.
+- Auth required: Yes.
+- Business rules:
+  - builds asset from suggestion+payload.
+  - computes status from lifecycle.
+  - marks suggestion confirmed + `already_added=true`.
+
+#### GET `/api/assets/suggestions/{suggestion_id}/email`
+- Purpose: fetch original Gmail message details.
+- Auth required: Yes.
+- Business rules:
+  - retrieves Gmail message by `email_message_id`.
+  - returns subject, sender, received date, extracted body, attachment metadata.
+
+#### GET `/api/assets/suggestions/{suggestion_id}/attachment`
+- Purpose: stream suggestion attachment.
+- Query: `download` boolean for content disposition.
+- Auth required: Yes.
+
+### Email Scan Routes
+
+#### GET `/api/emails`
+- Purpose: list scan records.
+- Auth required: Yes.
+
+#### POST `/api/email/scan`
+- Purpose: run Gmail sync and suggestion generation.
+- Auth required: Yes.
+- Request model: `GmailSyncRequest` (`days`, `max_results`, filters).
+- Response model: `GmailSyncResponse`.
+- Business rules:
+  - requires Gmail OAuth env config.
+  - validates mailbox status and configured email.
+  - performs scan + parse + dedupe pipeline.
+  - logs and returns validation errors for malformed suggestions.
+
+### Gmail Integration Routes (`/api/integrations/gmail`)
+
+#### GET `/status`
+- Purpose: connection status.
+- Auth required: Yes.
+
+#### POST `/connect`
+- Purpose: start OAuth flow and return auth URL/state.
+- Auth required: Yes.
+
+#### POST `/callback`
+- Purpose: complete OAuth callback in API style.
+- Auth required: Yes.
+
+#### GET `/callback`
+- Purpose: browser redirect callback and frontend redirect.
+- Auth required: No (state token identifies user integration row).
+
+#### POST `/disconnect`
+- Purpose: disconnect Gmail and clear tokens.
+- Auth required: Yes.
+
+### Categories Routes (`/api/categories`)
+
+#### GET `/api/categories`
+- Purpose: list category + subcategory master.
+- Auth required: Yes.
+
+#### POST `/api/categories`
+- Purpose: create category if not present.
+- Auth required: Yes.
+
+#### GET `/api/categories/{category_id}/subcategories`
+- Purpose: list subcategories by category.
+- Auth required: Yes.
+
+#### POST `/api/categories/{category_id}/subcategories`
+- Purpose: create subcategory if not present.
+- Auth required: Yes.
+
+### Reminders Routes (`/api/reminders`)
+
+#### GET `/api/reminders`
+- Purpose: list reminders.
+- Auth required: Yes.
+
+#### POST `/api/reminders`
+- Purpose: create reminder.
+- Auth required: Yes.
+- Required fields: `title`, `reminder_date`.
+
+#### PUT `/api/reminders/{reminder_id}`
+- Purpose: update reminder fields.
+- Auth required: Yes.
+
+#### DELETE `/api/reminders/{reminder_id}`
+- Purpose: delete reminder.
+- Auth required: Yes.
+
+### Statuses Route (`/api/statuses`)
+
+#### GET `/api/statuses`
+- Purpose: list active status master values.
+- Auth required: Yes.
+
+### Testing Route (`/api/testing`)
+
+#### POST `/api/testing/reset-user-data`
+- Purpose: destructive reset of current user test data.
+- Auth required: Yes.
+- Business rules:
+  - deletes user assets/suggestions/reminders/docs and referenced files.
+- Note: explicitly marked temporary and should be removed before production.
 
 ## 5. Database Design
 
-### Database Name
-`assetlife` (configured via `MONGODB_DB` in `.env`)
+Mongo database: `assetlife` (default via settings).
 
-### Collections
+### `users`
+Purpose:
+- Stores admin/superadmin (and potentially individual role in legacy path).
 
-#### `users`
-Admin and super-admin accounts.
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `username` | String | Unique |
-| `password` | String | bcrypt hash |
-| `role` | String | `"admin"` or `"super_admin"` |
-| `created_at` | DateTime | |
+Key fields:
+- `_id: ObjectId`
+- `role: RoleName`
+- `username: string?`
+- `password_hash: string?`
+- encrypted personal fields: `name`, `mobile`, `dob`, `pan`
+- `mobile_hash: string`
+- `is_active: bool`
+- `created_at`, `updated_at`
 
-#### `individual_users`
-End-user accounts. PII fields are AES-encrypted at rest.
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `name` | String | **AES encrypted** |
-| `mobile` | String | **AES encrypted** |
-| `mobile_hash` | String | SHA-256 hash of mobile; used for lookup |
-| `dob` | String | **AES encrypted** |
-| `pan` | String | **AES encrypted** |
-| `is_verified` | Bool | Set `true` after OTP success |
-| `created_at` | DateTime | |
+Business rules:
+- uniqueness by username and mobile hash (service enforced).
+- admin/superadmin require username/password.
 
-**Index**: `mobile_hash` (unique)
+### `individual_users`
+Purpose:
+- OTP-based end-user profile store.
 
-#### `assets`
-Core asset records.
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `user_id` | String | Owner's individual user ID |
-| `name` | String | |
-| `category` | String | |
-| `subcategory` | String | |
-| `brand` | String | |
-| `model` | String | |
-| `serial_number` | String | |
-| `purchase_date` | String | |
-| `purchase_price` | Number | |
-| `status` | String | |
-| `warranty` | Object | `{available, end_date, ...}` |
-| `insurance` | Object | `{available, expiry_date, ...}` |
-| `service` | Object | `{required, next_service_date, ...}` |
-| `invoice_path` | String | Relative path in `uploads/invoices/` |
-| `notes` | String | |
-| `created_at` | DateTime | |
+Key fields:
+- `_id`
+- `encrypted_name`
+- `encrypted_mobile`
+- `encrypted_email` (optional)
+- `encrypted_dob`
+- `encrypted_pan`
+- `mobile_hash`
+- `is_verified`
+- timestamps
 
-**Indexes**: `user_id`, `category`, `subcategory`
+Indexes:
+- unique `mobile_hash`
 
-#### `asset_suggestions`
-Email-derived asset candidates awaiting user review.
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `user_id` | String | |
-| `email_message_id` | String | Gmail message ID (deduplication) |
-| `status` | String | `"pending"`, `"confirmed"`, `"rejected"`, `"temp"` |
-| `attachment_filename` | String | Original email attachment filename |
-| `attachment_mime_type` | String | MIME type of attachment |
-| `invoice_attachment_path` | String | Saved path in `uploads/invoices/` |
-| `parsed_fields` | Object | OCR-extracted asset metadata |
-| `raw_email_data` | Object | Raw Gmail message metadata |
-| `created_at` | DateTime | |
+### `assets`
+Purpose:
+- Main asset inventory records.
 
-**Indexes**: `(user_id, status)` compound, `email_message_id`
+Key fields:
+- ownership: `user_id`
+- identity: `name`, `name_normalized`
+- classification: `category`, `subcategory`
+- metadata: `brand`, `vendor`, `vendor_normalized`, serial/model/invoice fields
+- lifecycle: `warranty`, `insurance`, `service`
+- status: `status`, `is_inactive`
+- source tracking: `source`, `source_email_id`, sender/subject, suggestion refs
+- file refs: `invoice_attachment_path`
+- reminders: `auto_reminders_created`
+- timestamps
 
-#### `asset_documents`
-Files attached to assets (separate from purchase invoices).
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `asset_id` | String | |
-| `user_id` | String | |
-| `filename` | String | Original filename |
-| `file_path` | String | Path in `uploads/documents/` |
-| `file_type` | String | MIME type |
-| `created_at` | DateTime | |
+Indexes:
+- `user_id`, `category`, `subcategory`
 
-#### `email_scans`
-Record of every Gmail message that was processed.
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `user_id` | String | |
-| `gmail_message_id` | String | |
-| `subject` | String | |
-| `sender` | String | |
-| `scan_date` | DateTime | |
-| `has_suggestion` | Bool | |
+Business rules:
+- duplicate detection via invoice number / source email id / name+vendor+date.
+- lifecycle-based status recomputation in create/update paths.
 
-**Index**: `(user_id, gmail_message_id)` unique compound
+### `asset_suggestions`
+Purpose:
+- Candidate assets extracted from mailbox scan.
 
-#### `gmail_integrations`
-Gmail OAuth2 tokens per user.
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `user_id` | String | |
-| `provider` | String | `"gmail"` |
-| `access_token` | String | **Encrypted** |
-| `refresh_token` | String | **Encrypted** |
-| `token_expiry` | DateTime | |
-| `connected_at` | DateTime | |
+Key fields:
+- `user_id`
+- extracted asset fields (`product_name`, `vendor`, `price`, etc.)
+- email fields (`sender`, `subject`, `email_date`, `email_message_id`)
+- attachment metadata + stored file path
+- `status` (`pending`, `rejected`, `confirmed`, etc.)
+- `already_added`, optional `asset_id`
+- timestamps
 
-**Index**: `(user_id, provider)` unique compound
+Indexes:
+- compound `(user_id, status)`
+- `email_message_id`
 
-#### `reminders`
-User-created date-based reminders.
-| Field | Type | Notes |
-|---|---|---|
-| `_id` | ObjectId | |
-| `user_id` | String | |
-| `asset_id` | String | Optional — link to asset |
-| `title` | String | |
-| `reminder_date` | DateTime | |
-| `is_active` | Bool | |
+Business rules:
+- minimum signal required before insertion (name/price/invoice_number).
+- dedupe checks against assets before creating actionable suggestion.
 
-**Index**: `(user_id, reminder_date)` compound
+### `email_scans`
+Purpose:
+- Scan history rows.
 
-#### `categories` / `subcategories`
-Master data for asset classification.
+Key fields:
+- `user_id`
+- `gmail_message_id`
+- sender/subject/date/status fields
+- counters/metadata
 
-**Indexes**: `categories.category` (unique), `subcategories.(category_id, name)` (unique compound)
+Indexes:
+- unique `(user_id, gmail_message_id)`
 
-#### `status_master`
-Master list of asset status values; seeded on startup.
-Default values: `Active`, `In Warranty`, `Expired`, `Expiring Soon`, `Inactive`, `Lost`, `Damaged`
+### `gmail_integrations`
+Purpose:
+- Gmail OAuth integration state per user.
 
-**Index**: `name` (unique)
+Key fields:
+- `user_id`
+- `provider` (`gmail`)
+- `connected`
+- tokens (`access_token`, `refresh_token`)
+- `token_expiry`
+- `oauth_state`, `pending_email`, `email_address`
+- `last_sync_at`, timestamps
 
----
+Indexes:
+- unique `(user_id, provider)` (created in scan service)
+
+### `reminders`
+Purpose:
+- user-created and auto-generated reminders.
+
+Key fields:
+- `user_id`
+- `asset_id`, `asset_name`
+- `title`, `reminder_date`
+- `reminder_type`, `status`, `notes`
+- timestamps
+
+Indexes:
+- compound `(user_id, reminder_date)`
+
+### `categories`
+Purpose:
+- category master.
+
+Key fields:
+- `name`, `category` (canonical string)
+- `description`, `is_active`
+- timestamps
+
+Indexes:
+- unique `category`
+
+### `subcategories`
+Purpose:
+- subcategory master linked by category id string.
+
+Key fields:
+- `name`
+- `category_id` (string ObjectId reference)
+- metadata fields
+
+Indexes:
+- unique compound `(category_id, name)`
+
+### `status_master`
+Purpose:
+- allowed status values.
+
+Default seeded values:
+- Active
+- In Warranty
+- Expired
+- Expiring Soon
+- Inactive
+- Lost
+- Damaged
+
+Indexes:
+- unique `name`
+
+### `asset_documents`
+Purpose:
+- supporting document metadata for assets.
+
+Key fields:
+- `asset_id`, `user_id`
+- `file_name`, `document_type`, `file_path`
+- `uploaded_at`
+
+Relationships summary:
+- assets.user_id -> individual user id claim string
+- reminders.asset_id -> assets._id string
+- subcategories.category_id -> categories._id string
+- suggestions.asset_id -> assets._id string (when confirmed)
+- documents.asset_id -> assets._id string
 
 ## 6. Data Flow
 
-### 6.1 Individual User Login (OTP Flow)
+### Frontend -> Backend -> Database
+1. UI triggers service function in `webapp/src/services/*`.
+2. Axios instance injects bearer token.
+3. FastAPI route validates auth and payload.
+4. Route delegates to service or executes business logic.
+5. Motor writes/reads Mongo.
+6. Response normalized in frontend services/pages.
 
-```
-Browser                    Frontend                   Backend
-  |                           |                          |
-  |── Enter mobile number ───>|                          |
-  |                           |── POST /individual/send-otp ──>|
-  |                           |                          |── Validate mobile exists
-  |                           |                          |── Generate random 6-digit OTP
-  |                           |                          |── Store in memory (30s TTL)
-  |                           |                          |── Print OTP to terminal (dev)
-  |                           |<── 200 OK ───────────────|
-  |── Enter OTP from terminal>|                          |
-  |                           |── POST /individual/verify-otp ──>|
-  |                           |                          |── Validate OTP (TTL, value)
-  |                           |                          |── Mark user is_verified=true
-  |                           |                          |── Create JWT (HS256, 60 min)
-  |                           |<── { token } ────────────|
-  |                           |── Store token in Zustand + localStorage
-  |<── Redirect /dashboard ───|
-```
+### Asset Create/Update/Retrieve Flow
 
-### 6.2 Gmail Email Sync → Asset Suggestion
+Create:
+- Sources: manual entry, email suggestion confirm, Excel upload workflow, invoice upload path.
+- Backend checks duplicates.
+- Lifecycle parsed and enriched.
+- Status computed.
+- Asset inserted.
+- Auto reminders generated.
+- Optional suggestion record marked confirmed.
 
-```
-User clicks "Sync Emails" in EmailScans page
-    ↓
-POST /api/email/scan
-    ↓ email_scan_service.py
-Fetch Gmail messages using stored OAuth2 tokens
-    ↓
-For each message with invoice attachment:
-    - Check email_scans for duplicate (gmail_message_id)
-    - Save attachment to uploads/invoices/
-    - Create asset_suggestions document (status="pending")
-    - Create email_scans record
-    ↓
-Return GmailSyncResponse { new_suggestions_count, ... }
-```
+Update:
+- Existing asset fetched.
+- allowed fields merged.
+- explicit non-lifecycle statuses preserved (`Inactive`, `Lost`, `Damaged`).
+- otherwise lifecycle-based status recomputed.
+- reminder sync deletes old relevant reminders and creates updated ones.
 
-### 6.3 Asset Suggestion Review → Asset Creation
+Retrieve:
+- user-scoped list/single fetch.
+- frontend parses lifecycle JSON/object variants safely.
 
-```
-User opens AddAsset → Email Sync tab
-    ↓
-GET /api/assets/suggestions  →  Load pending suggestions grid
-    ↓
-User clicks "+" on a suggestion row
-    ↓  (handlePrepareSave - AddAsset.tsx)
-POST /api/assets/suggestions/{id}/parse  →  OCR invoice attachment
-    ↓  invoice_parser.py
-PyPDF2 / pytesseract extracts: name, brand, price, dates, category
-    ↓
-AssetPreviewModal opens with enriched parsed_fields + attachment blob
-    ↓  (GET /api/assets/suggestions/{id}/attachment)
-User reviews/edits fields, clicks "Save Asset"
-    ↓
-POST /api/assets/suggestions/{id}/confirm
-    ↓  asset_suggestion_service.py
-Create asset document in assets collection
-Update suggestion status = "confirmed"
-    ↓
-Asset appears in user's Assets list
-```
-
-### 6.4 Direct Asset Creation (Manual Entry / Excel / Invoice Upload)
-
-```
-POST /api/assets  (multipart/form-data when invoice attached)
-    ↓
-Save invoice file to uploads/invoices/{uuid}_{filename}
-Insert asset document into assets collection
-Return created asset with _id
-```
-
-### 6.5 Frontend API Request Flow
-
-```
-React Component
-    ↓
-Service function (services/gmail.ts or reminders.ts)
-    ↓
-Axios instance (services/api.ts)
-    ├── Request interceptor: inject Authorization: Bearer <token>
-    ↓
-Backend FastAPI handler
-    ↓
-Response interceptor (on 401): logout() + redirect to /login
-```
-
----
+### Background / Processing Logic
+- No detached worker/queue system currently.
+- Gmail sync + attachment parsing run inline during API call.
+- OCR/PDF parsing and FX lookup happen in request path.
 
 ## 7. Frontend Architecture
 
-### Technology Stack
-| Library | Version | Purpose |
-|---|---|---|
-| React | 18 | UI framework |
-| TypeScript | 4.9 | Type safety |
-| React Router | v6 | Client-side routing |
-| MUI (Material UI) | v7 + Emotion | Component library + styling |
-| Zustand | v5 | Global state (auth) |
-| Axios | 1.7 | HTTP client |
-| Recharts | 3.8 | Dashboard charts |
-| PrimeReact | imported | Minimal usage (some data grids) |
-| Create React App | 5 (react-scripts) | Build tooling |
+### Framework
+- React + TypeScript SPA.
+- Route protection via `PrivateRoute` and Zustand token state.
+
+### Folder Responsibilities
+- `pages/`: route-level screens.
+- `components/`: shared UI shells/widgets.
+- `services/`: HTTP/API layer and typed contracts.
+- `store/`: auth state and persistence.
+- `hooks/`: reusable behavior (`useAutoDismissMessage`).
+- `utils/`: lifecycle/status helper calculations.
+
+### Key Pages
+- `IndividualLogin`: OTP send/verify.
+- `IndividualRegister`: register + OTP verify.
+- `Dashboard`: aggregates assets/reminders/suggestions for metrics/charts.
+- `Assets`: list/filter/edit assets and supporting document operations.
+- `AddAsset`: multi-mode onboarding (email sync, invoice upload, excel upload, qr/manual entry UI).
+- `AssetSuggestions`: review and confirm parsed suggestions.
+- `EmailIntegrations`: Gmail connect/disconnect and sync trigger.
+- `EmailScans`: scan history and suggestion actions.
+- `Reminders`: reminder CRUD.
+- `Profile`: profile fetch/update with role-aware endpoint behavior.
+- `Settings`: includes temporary reset-test-data action.
+- `Reports`, `Users`: currently stub pages.
 
 ### State Management
-**Zustand store** (`store/userStore.ts`):
-- Persists JWT to `localStorage` key `access_token` (migrates from legacy key `jwt_token`)
-- Actions: `login(token, userData)`, `logout()`, `updateUser()`
-- `logout()` clears token from both store and localStorage then navigates to `/login`
+- Zustand store for token/user.
+- Token keys:
+  - `access_token` (current)
+  - `jwt_token` (legacy migration support)
 
-### Active vs Legacy Code
-| Path | Status |
-|---|---|
-| `src/App.tsx` | ✅ **Active** — runtime router, imported by `index.tsx` |
-| `src/pages/` | ✅ **Active** — all current page components |
-| `src/components/` | ✅ **Active** — shared components |
-| `src/services/` | ✅ **Active** — API service layer |
-| `src/AppRoutes.tsx` | ⚠ **Legacy** — not imported anywhere active |
-| `src/features/` | ⚠ **Legacy** — all files contain "Legacy component" comment |
+### API Integration Approach
+- `services/api.ts` configures base URL and interceptors.
+- Request interceptor adds auth header from store/localStorage.
+- Response interceptor auto-logout + redirect on 401.
+- Blob endpoints handled for invoice/document download.
 
-### Key Components
-**`AdminLayout.tsx`**: Main app shell
-- Collapsible sidebar with sections: Dashboard, Assets (expandable), Email Integration, Email Scans, Reminders, Reports, Users, Profile, Settings
-- Assets submenu: Email Sync, Invoice Upload, Excel Upload, Barcode/QR, Manual Entry → all open `AddAsset.tsx` with tab pre-selected
-- Top bar: theme toggle, user profile menu
+### Form Handling
+- Form state local to pages/components.
+- Validation mostly client-side in page handlers (email/mobile/required fields).
+- OTP screens include cooldown timer and user feedback.
 
-**`AssetPreviewModal.tsx`**: Asset preview and edit popup
-- Used from Email Sync (`AddAsset.tsx`) to review parsed suggestions before saving
-- Left panel: editable asset fields (name, category, brand, price, lifecycle dates)
-- Right panel: attachment invoice preview (PDF/image blob) or email preview
-- **Critical**: Effect for loading attachment blob must NOT include `attachmentUrl` in its dependency array (causes infinite re-render loop; see Section 14)
+### Navigation/Routing
+- Active routes defined in `App.tsx`.
+- Root redirects to `/dashboard`.
+- login/register public; core screens protected.
 
-**`PrivateRoute.tsx`**: Route guard
-- Reads token from Zustand; if absent, redirects to `/login`
+## 8. Application Navigation (User Flow)
 
----
+### Login / Authentication
+1. User opens `/login`.
+2. Enters mobile number.
+3. `POST /individual/send-otp`.
+4. Enters OTP.
+5. `POST /individual/verify-otp` returns token.
+6. Token stored in Zustand + localStorage.
+7. Redirect to `/dashboard`.
 
-## 8. Application Navigation
+### Registration
+1. `/register` form with name + email/phone.
+2. Current implementation requires phone for OTP flow.
+3. `POST /individual/register`, then OTP verify via `/individual/verify-otp`.
+4. Auto-login and redirect to dashboard.
 
-### Public Routes
-| Path | Component | Description |
-|---|---|---|
-| `/login` | `IndividualLogin.tsx` | OTP-based login |
-| `/register` | `IndividualRegister.tsx` | New account registration |
+### Main Dashboard
+- Shows asset counts by status, reminder windows, and suggestion count.
+- Loads assets/reminders/suggestions concurrently.
 
-### Protected Routes (under `AdminLayout` + `PrivateRoute`)
-| Path | Component | Description |
-|---|---|---|
-| `/dashboard` | `Dashboard.tsx` | Asset summary charts, recent activity |
-| `/integrations/email` | `EmailIntegrations.tsx` | Connect/disconnect Gmail |
-| `/emails` | `EmailScans.tsx` | View scanned emails, trigger sync |
-| `/assets/suggestions` | `AssetSuggestions.tsx` | Review pending asset suggestions |
-| `/assets` | `Assets.tsx` | Full asset list with filter/search |
-| `/assets/add` | `AddAsset.tsx` | Multi-tab asset creation hub |
-| `/assets/:assetId` | `AssetView.tsx` | Single asset detail + lifecycle view |
-| `/reminders` | `Reminders.tsx` | Manage date-based reminders |
-| `/reports` | `Reports.tsx` | ⚠ Placeholder — empty content |
-| `/users` | `Users.tsx` | Admin: manage platform users |
-| `/profile` | `Profile.tsx` | Edit own profile |
-| `/settings` | `Settings.tsx` | App settings + ⚠ TEMPORARY reset button |
+### Asset Creation
+Primary entry path: `/assets/add`.
+Modes:
+- Email sync mode: connect mailbox, sync, parse suggestions, confirm.
+- Excel upload mode: download template, upload file, validate rows, create selected assets.
+- Invoice upload/manual/QR modes: UI paths routed to modal/manual creation flows.
 
----
+### Asset Listing and Editing
+- `/assets` provides searchable/filterable list/grid.
+- Edit/update via modal and update endpoint.
+- view details via `/assets/:assetId`.
+- upload/list/delete supporting docs.
+
+### Settings and Admin/Management
+- `/profile`: user profile management.
+- `/settings`: includes temporary test data reset control.
+- `/users` and `/reports`: currently placeholder pages in frontend.
 
 ## 9. Business Logic
 
-### Asset Status Computation
-Asset statuses are stored in `status_master` collection and seeded at startup:
-- **Active** — default state after creation
-- **In Warranty** — warranty.available=true and within expiry
-- **Expiring Soon** — warranty/insurance expiring within threshold window
-- **Expired** — warranty/insurance past end date
-- **Inactive** — manually set
-- **Lost** / **Damaged** — manually set
+### Asset Creation Rules
+- Category and subcategory required.
+- Duplicate prevention:
+  - same invoice number (case-insensitive)
+  - same source email id
+  - same normalized name + vendor + purchase date
+- Source normalization maps aliases (`gmail`, `manual_entry`, etc.) to canonical source.
 
-Frontend status badge rendering: `utils/assetStatus.ts`
+### Category/Subcategory Logic
+- Final category map defined in backend (`FINAL_CATEGORY_SUBCATEGORIES`).
+- Non-Other categories force inclusion of subcategory `Other`.
+- Category APIs dedupe case-insensitively.
+- Excel template enforces category/subcategory validation lists.
 
-### Asset Lifecycle Fields
-Each asset can have three lifecycle objects. These can arrive as **JSON strings or plain objects** depending on the code path — always parse safely:
-```typescript
-// Safe access pattern
-const warranty = typeof asset.warranty === 'string'
-  ? JSON.parse(asset.warranty)
-  : asset.warranty;
-const inWarranty = warranty?.available && !!warranty?.end_date;
-```
-- **Warranty**: `{ available, end_date / endDate }`
-- **Insurance**: `{ available, expiry_date / end_date / endDate }`
-- **Service**: `{ required / available, next_service_date / nextServiceDate }`
+### Document Handling
+- Invoices stored in `uploads/invoices`.
+- Supporting docs stored in `uploads/documents`.
+- File paths persisted in DB; files streamed through authenticated endpoints.
+- Deletion operations remove physical files and metadata rows.
 
-### Category System
-12 top-level categories seeded on startup:
-- Electronics, Home Appliances, Personal Gadgets, Furniture, Vehicles, Property & Real Estate, Financial Assets, Documents, Subscriptions & Services, Jewelry & Valuables, Education, Other
+### Reminder Logic
+- Manual reminder CRUD via reminders API.
+- Auto reminder creation from asset lifecycle at create/update.
+- Lifecycle updates remove stale reminders and recreate according to new dates.
 
-Each non-"Other" category automatically gets an "Other" subcategory appended. Categories are deduplicated case-insensitively.
+### Notification Logic
+- No external notification channel integrated yet.
+- Reminder records exist but no scheduler/dispatcher for SMS/email/push.
 
-### OTP Authentication
-- **TTL**: 30 seconds
-- **Rate limit**: 5 requests per 5 minutes per mobile hash
-- **Storage**: In-memory Python dict (singleton `OtpService` instance) — does NOT survive server restart
-- **Delivery**: OTP is printed to the backend terminal (development only; no SMS/email service)
-- **Verify returns**: `"valid"` | `"not_found"` | `"expired"` | `"invalid"`
-
-### PII Encryption
-`user_service.py` encrypts sensitive individual user fields at write time and decrypts at read time:
-- **AES encrypted**: `name`, `mobile`, `dob`, `pan`
-- **SHA-256 hashed**: `mobile` → stored as `mobile_hash` for DB lookup without decrypting
-
-### Invoice Parsing Pipeline
-`invoice_parser.py`:
-1. Receive file path of uploaded invoice
-2. Detect type: PDF vs image
-3. PDF: PyPDF2 text extraction → regex patterns for brand, price, date, category
-4. Image: Pillow open → pytesseract OCR → same regex extraction
-5. Return structured `parsed_fields` dict
-
-### Gmail OAuth2 Token Lifecycle
-`gmail_service.py`:
-1. `connect()` → generate Google OAuth2 authorization URL (scope: `gmail.readonly`)
-2. `callback()` → exchange code for tokens; encrypt and store in `gmail_integrations`
-3. On each sync → load tokens, refresh if expired, re-encrypt updated tokens
-4. `disconnect()` → delete `gmail_integrations` document for user
-
----
+### Validation Rules
+- OTP mobile validation (digits only, length checks).
+- OTP TTL = 30s, rate limit 5 requests/5 min.
+- Excel upload enforces template headers and row-level field constraints.
+- Status values validated/mapped against status master list.
 
 ## 10. External Integrations
 
-### Gmail (Google OAuth2)
-- **Scopes**: `https://www.googleapis.com/auth/gmail.readonly`
-- **OAuth flow**: Standard authorization code flow; callback handled at `GET /api/integrations/gmail/callback`
-- **Token storage**: Encrypted in MongoDB `gmail_integrations` collection
-- **Sync operation**: Fetches recent messages, filters for purchase/invoice emails, downloads attachments
-- **Config keys**: `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REDIRECT_URI`
+### Gmail Integration
+- OAuth2 flow with Google endpoints.
+- Scope: `https://www.googleapis.com/auth/gmail.readonly`.
+- Supports connect, callback, token refresh, disconnect.
+- Scan pipeline queries recent messages with attachments.
+
+### Email Processing
+- Parses Gmail message body and attachments.
+- Attachment scoring to detect invoice likelihood.
+- Parses up to top candidates; persists primary invoice attachment.
 
 ### File Storage
-- **Type**: Local filesystem (not cloud storage — no S3/GCS integration)
-- **Invoice files**: `backend/uploads/invoices/`
-- **Asset documents**: `backend/uploads/documents/`
-- **File paths** stored relative to `uploads/` in database fields
-- **Access**: Files streamed back as `FileResponse` with proper MIME type
+- Local filesystem storage under backend `uploads/`.
+- No cloud object storage integration currently.
 
-### No Active Third-Party Services
-- No SMS provider (OTP goes to terminal only)
-- No email delivery service
-- No push notifications
-- No external analytics
-
----
+### Third-Party APIs
+- Exchange rate lookup in invoice parser:
+  - `https://open.er-api.com/v6/latest/{currency}`
+  - fallback static FX map if needed.
 
 ## 11. Environment Configuration
 
-### Backend (`backend/.env`)
-```env
-APP_NAME=AssetLife
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB=assetlife
-JWT_SECRET_KEY=<your-secret-key>
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-ENCRYPTION_KEY=<your-32-byte-base64-aes-key>
-OTP_STATIC_CODE=123456
-FRONTEND_APP_URL=http://localhost:3000
-GMAIL_CLIENT_ID=<google-oauth-client-id>
-GMAIL_CLIENT_SECRET=<google-oauth-client-secret>
-GMAIL_REDIRECT_URI=http://localhost:8000/api/integrations/gmail/callback
-```
+### Backend Settings (from `core/config.py` + service code)
+- `APP_NAME`
+- `DEBUG`
+- `ENCRYPTION_KEY`
+- `JWT_SECRET_KEY`
+- `JWT_ALGORITHM`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `MONGODB_URI`
+- `MONGODB_DB`
+- `LOG_LEVEL`
+- `LOG_FILE`
+- `OTP_STATIC_CODE`
+- `FRONTEND_APP_URL`
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REDIRECT_URI`
+- `GMAIL_OAUTH_SCOPES`
+- `GMAIL_ACCESS_TOKEN` (optional env-token mode)
+- `GMAIL_REFRESH_TOKEN` (optional env-token mode)
+- `GMAIL_EMAIL_ADDRESS` (optional env-token mode)
 
-### Frontend (`webapp/.env`)
-```env
-REACT_APP_API_BASE_URL=http://localhost:8000
-```
+Additional env variable names referenced in Gmail/email scan services:
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI`
 
-### Key Notes
-- `OTP_STATIC_CODE=123456` is used only by the legacy `/auth/login/individual` path in `user_service.authenticate_individual()`. The active `/individual/verify-otp` flow uses the in-memory OTP store with random codes.
-- `ENCRYPTION_KEY` must be a valid 32-byte base64-encoded key for AES-256 encryption.
-- The Axios fallback base URL in `services/api.ts` was previously `http://192.168.0.14:8000` (LAN IP) — ensure the `.env` is set correctly for all environments.
+Note:
+- There is mixed naming usage (`GMAIL_*` and `GOOGLE_*`) in different modules.
 
----
+### Frontend Settings
+- `REACT_APP_API_BASE_URL`
 
-## 12. Security
+### Development vs Production Behavior
+- In debug/dev, OTP may be printed and/or returned in response payload (`debug_otp`).
+- OTP delivery is not integrated with SMS/email provider.
+- Local upload directories and local MongoDB assumed.
+- Testing reset endpoint is still accessible via UI.
+
+## 12. Security Implementation
 
 ### Authentication
-- **JWT**: HS256 signing, 60-minute expiry. Decoded by `core/security.py → get_current_user()` on every protected request.
-- **OTP**: Random 6-digit codes with 30-second TTL and per-mobile rate limiting. In-memory only (not persistent).
-- **Admin passwords**: bcrypt-hashed; verified by `UserService.authenticate_admin()`.
+- JWT bearer tokens (HS256).
+- Token claims include `sub`, `role`, optional username.
+- 401 handling in frontend logs out and redirects.
 
 ### Authorization
-- Role-based via `require_roles(*roles)` FastAPI dependency factory.
-- Roles: `SUPER_ADMIN`, `ADMIN`, `INDIVIDUAL`
-- Asset endpoints scope data to authenticated user's `user_id` — users cannot access other users' assets.
-- Document and suggestion endpoints also scoped to `user_id`.
+- Role-based dependencies on protected admin endpoints.
+- Per-user ownership checks for assets/suggestions/reminders/documents.
 
 ### Data Protection
-- **PII encryption at rest**: `name`, `mobile`, `dob`, `pan` in `individual_users` are AES-encrypted in MongoDB. Decrypted only in service layer, never returned as raw ciphertext.
-- **Gmail tokens encrypted**: OAuth2 access/refresh tokens encrypted before DB storage.
-- **Mobile lookup**: Uses SHA-256 hash (`mobile_hash`) so the server never needs to decrypt to find a user.
+- Sensitive individual and user personal fields encrypted with Fernet.
+- mobile hash used for lookup and uniqueness.
+- Admin passwords hashed with bcrypt.
 
-### Frontend Security
-- Token stored in `localStorage` (standard SPA pattern). Interceptor injects it as `Authorization: Bearer` header.
-- 401 responses trigger auto-logout to prevent stale session use.
-- Route guard (`PrivateRoute`) prevents access to protected pages without a token.
+### Protection Measures in API
+- Input validation via Pydantic and manual guards.
+- ObjectId parsing with 400 for invalid IDs.
+- Structured exception handling.
 
-### Known Concerns
-- CORS is currently restricted to `http://localhost:3000` only — good for development, must be updated for production deployment with actual domain.
-- OTP has no persistence — server restart invalidates all pending OTPs.
-- File upload directory (`uploads/`) must not be web-accessible without authentication. Files are accessed only through authenticated API endpoints — do not expose `uploads/` directly via static file serving.
-- No CSRF protection currently in place (JWT in Authorization header mitigates most CSRF risk, but worth auditing for sensitive mutation endpoints).
+### Security Gaps / Risk Notes
+- OTP storage is in-memory only (no distributed/session-safe storage).
+- OTP currently exposed in debug and terminal output in dev.
+- Token persistence in localStorage (common SPA tradeoff, XSS-sensitive).
+- CORS currently hardcoded for localhost frontend.
+- Temporary destructive testing endpoint present in production code path.
 
----
+## 13. Current Limitations / TODOs
 
-## 13. Current Limitations and TODOs
+### Partially Implemented / Placeholder Features
+- Frontend `Users` and `Reports` pages are placeholders.
+- Mobile module files are empty placeholders.
+- Legacy frontend tree (`features/*`, `AppRoutes.tsx`) still in repo but inactive.
 
-### ⚠ Temporary Features (Must Remove Before Production)
-| Location | Description |
-|---|---|
-| `backend/app/routes/testing.py` | `POST /api/testing/reset-user-data` — wipes all user data |
-| `webapp/src/pages/Settings.tsx:31` | "Reset Data" button that calls the above endpoint |
+### Known Gaps
+- No background job queue for heavy email/OCR processing.
+- No notification dispatcher for reminders.
+- No cloud file storage abstraction.
+- Endpoint contracts are not fully uniform (some dict payloads, some strict schemas).
+- Mixed environment variable names in Gmail modules.
 
-Both have the comment `# TEMPORARY TESTING FEATURE: remove before production deployment`.
+### Explicit Temporary Features
+- Backend: `/api/testing/reset-user-data` route is marked temporary.
+- Frontend: Settings page exposes "Reset Test Data" action with temporary warning.
 
-### Empty / Placeholder Content
-| Item | Status |
-|---|---|
-| `webapp/src/pages/Reports.tsx` | Empty page — no chart/report content implemented |
-| `mobile/lib/main.dart` | Empty file — Flutter app is not functional |
-| `mobile/pubspec.yaml` | Empty — no dependencies configured |
-| `backend/app/api/dependencies.py` | Empty — reserved but unused |
-
-### Legacy / Dead Code (Safe to Delete)
-| Path | Reason |
-|---|---|
-| `webapp/src/AppRoutes.tsx` | Not imported; marked as "Legacy router kept for reference only" |
-| `webapp/src/features/auth/` | All files marked "Legacy feature component" |
-| `webapp/src/features/dashboard/` | All files marked "Legacy feature component" |
-| `backend/app/routers/individual.py` | In `routers/` (not `routes/`); orphaned, not imported in `main.py` |
-
-### Unimplemented / Partial Features
-- **OTP delivery**: Not connected to any SMS or email provider. For production, integrate Twilio, AWS SNS, or similar.
-- **Reports page**: Completely empty. No analytics/export features implemented.
-- **Mobile app**: Empty Flutter scaffold. No authentication, asset listing, or any screen implemented.
-- **Barcode/QR scan**: Entry point exists in sidebar but functionality depends on mobile or webcam API.
-
-### Authentication Dual-Path Inconsistency
-Two OTP flows exist with different implementations:
-- `/auth/send-otp` + `/auth/verify-otp` — one implementation in `auth.py`
-- `/individual/send-otp` + `/individual/verify-otp` — separate implementation in `individual.py`
-
-Additionally, `UserService.authenticate_individual()` (called by `/auth/login/individual`) still compares against `settings.OTP_STATIC_CODE` — this is a legacy code path that should be removed.
-
----
+### TODO/Legacy/Outdated Code Signals
+- `backend/app/routers/individual.py` re-exports route and is not active primary module.
+- `backend/app/api/dependencies.py` empty.
+- `backend/app/exceptions/custom_exceptions.py` empty.
+- `webapp/src/features/*` marked legacy and not used by active router.
 
 ## 14. Development Notes
 
-### Critical: Known Bugs Fixed This Session
+### Important Design Decisions
+- Asset status source of truth moved to backend, not frontend-only computation.
+- Lifecycle data supports multiple key naming patterns to tolerate heterogeneous payloads.
+- Suggestion pipeline designed for incremental/manual confirmation rather than auto-create.
+- Category and status master data are centrally managed in backend collections.
 
-#### `AssetPreviewModal.tsx` — Attachment Preview Effect Dependencies
-**Do not** add `attachmentUrl` to the dependency array of the `useEffect` that calls `setAttachmentUrl(...)`. Doing so creates an infinite re-render loop:
-```
-setAttachmentUrl → attachmentUrl changes → effect re-runs → revoke + refetch → setAttachmentUrl → ...
-```
+### Areas Requiring Caution Before Modification
+- `assets.py`: large, high-complexity module handling template generation, lifecycle logic, reminders, and CRUD.
+- Gmail/email scan services: token logic + parsing pipeline are tightly coupled.
+- Profile flow: role-based branching uses different endpoints and payload shapes.
+- Encryption helpers: changing key strategy without migration plan will break existing encrypted records.
 
-**Correct pattern** — deps must be stable attachment identity keys only:
-```typescript
-useEffect(() => {
-  // ... fetch blob, create object URL
-  setAttachmentUrl((prev) => {
-    if (prev) URL.revokeObjectURL(prev);  // revoke old without needing dep
-    return newObjectUrl;
-  });
-}, [
-  suggestion?.id,
-  suggestion?.attachment_filename,
-  suggestion?.attachment_mime_type,
-  suggestion?.invoice_attachment_path,
-  open, rightPanelTab, disableAttachmentAndEmailPreview
-]);
-// ← attachmentUrl is NOT in this array
-```
+### Assumptions in Current Implementation
+- Single backend instance can safely manage OTP in memory (not true for distributed deployment).
+- Upload filesystem is writable and persistent.
+- MongoDB contains normalized data but frontend still defensively parses mixed field shapes.
+- Gmail OAuth callback domain aligns with `FRONTEND_APP_URL` redirect expectations.
 
-#### `backend/app/routes/assets.py` — Risk of Accidental Duplication
-This file has previously had its full module content duplicated accidentally (likely via editor paste/merge). If asset behavior looks inconsistent, verify the file is not duplicated. Check for duplicate function definitions with `grep -n "^@router\." backend/app/routes/assets.py | sort`.
-
-### Logger Extra Field Warning
-**Do not** use reserved Python `LogRecord` attribute names as keys in loguru `extra` dictionaries. Example reserved names: `filename`, `lineno`, `funcName`, `module`, `levelname`, `message`, `name`, `pathname`, `process`, `thread`.
-
-Using reserved keys raises `KeyError` during log emission and silently stops suggestion creation for the affected email:
-```python
-# BAD — 'filename' is a reserved LogRecord key
-logger.info("Processing", extra={"filename": attachment.filename})
-
-# GOOD — use a safe custom key
-logger.info("Processing", extra={"attachment_name": attachment.filename})
-```
-
-### Category/Subcategory Rendering (Frontend)
-- Accept both `id` and `_id` from backend payloads
-- Guard against null/undefined before rendering MUI `MenuItem` keys
-- Disable subcategory dropdown until a category is selected
-- Compare selected category names case-insensitively for dependent dropdown filtering
-
-### Asset Lifecycle Data (Frontend)
-Lifecycle fields (`warranty`, `insurance`, `service`) can arrive as either JSON strings or plain objects depending on the API path. Always parse defensively:
-```typescript
-const w = typeof asset.warranty === 'string' ? JSON.parse(asset.warranty) : asset.warranty;
-```
-
-### Asset Grid Sticky Actions Column
-The Actions column in asset data grids should use:
-```css
-position: sticky;
-right: 0;
-width: 140px;   /* fixed, not responsive fraction */
-background-color: <theme bgcolor>;
-```
-This pins the column during horizontal scroll.
-
-### Debug Logs Currently Active (Remove for Production)
-The following `console.log` statements were added during debugging and should be removed before production:
-| File | Log |
-|---|---|
-| `webapp/src/pages/AddAsset.tsx` | `console.log("Selected asset data:", suggestion)` (in `handlePrepareSave`) |
-| `webapp/src/components/modules/AssetPreviewModal.tsx` | `console.log("Asset in popup:", suggestion)` |
-| `webapp/src/components/modules/AssetPreviewModal.tsx` | `console.log("Attachment:", attachmentUrl)` |
-| `webapp/src/components/modules/AssetPreviewModal.tsx` | `console.log("Loading:", attachmentLoading)` |
-
-### Running the Project
-
-**Backend:**
-```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8000
-```
-
-**Frontend:**
-```bash
-cd webapp
-npm start          # development server on port 3000
-npm run build      # production build to webapp/build/
-```
-
-**Run backend + view OTP in dev:**
-OTP codes are printed directly to the backend terminal stdout. Check the terminal running uvicorn to get the OTP after triggering `/individual/send-otp`.
-
-### Build Artifacts (Do Not Commit)
-- `webapp/build/` — production build output
-- `webapp/node_modules/.cache/babel-loader/` — babel transpile cache
-- `backend/__pycache__/` — Python bytecode
-- `backend/uploads/` — user-uploaded files (should be gitignored in production)
-
----
-
-*End of Technical Summary*
+### Recommended Next Hardening Steps
+1. Remove testing reset endpoint and UI trigger.
+2. Unify Gmail env variable naming (`GMAIL_*` vs `GOOGLE_*`).
+3. Add async background processing for email scan/attachment parse.
+4. Implement notification dispatch layer for reminders.
+5. Prune legacy frontend modules and stale backend wrappers.
+6. Add contract tests/OpenAPI examples for all major endpoints.

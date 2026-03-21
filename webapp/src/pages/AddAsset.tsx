@@ -2496,6 +2496,7 @@ const AddAsset = () => {
       <AssetPreviewModal
         open={Boolean(selectedSuggestion) && String(selectedSuggestion?.source || "").toLowerCase() !== "manual"}
         suggestion={selectedSuggestion}
+        isSuggestionMode={selectedMethod === "email_sync"}
         disableAttachmentAndEmailPreview={String(selectedSuggestion?.source || "").toLowerCase() === "excel"}
         parsingMessage={parsingMessage}
         saveLoading={saveLoading}
