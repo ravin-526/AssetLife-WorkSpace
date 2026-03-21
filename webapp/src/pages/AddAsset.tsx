@@ -123,6 +123,7 @@ const FROZEN_COLUMN_WIDTHS = {
   status: 120,
   actions: 100,
 };
+const EXCEL_PREVIEW_SELECTOR_WIDTH = 76;
 
 const EXCEL_DEFAULT_PREVIEW_COLUMNS: Array<{ key: string; label: string; width: string }> = [
   { key: "product_name", label: "Asset Name", width: "220px" },
@@ -131,6 +132,8 @@ const EXCEL_DEFAULT_PREVIEW_COLUMNS: Array<{ key: string; label: string; width: 
   { key: "vendor", label: "Vendor", width: "180px" },
   { key: "purchase_date", label: "Purchase Date", width: "150px" },
 ];
+const EXCEL_PREVIEW_GRID_TEMPLATE = `${EXCEL_PREVIEW_SELECTOR_WIDTH}px ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" ")} ${FROZEN_COLUMN_WIDTHS.error}px ${FROZEN_COLUMN_WIDTHS.status}px ${FROZEN_COLUMN_WIDTHS.actions}px`;
+const EXCEL_PREVIEW_GRID_MIN_WIDTH = `calc(${EXCEL_PREVIEW_SELECTOR_WIDTH}px + ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" + ")} + ${FROZEN_COLUMN_WIDTHS.error}px + ${FROZEN_COLUMN_WIDTHS.status}px + ${FROZEN_COLUMN_WIDTHS.actions}px)`;
 
 // Comprehensive column definitions with width info for all columns (ordered for proper layout)
 const EXCEL_ALL_COLUMNS_WITH_WIDTH: Array<{ key: string; label: string; width: string }> = [
@@ -1939,19 +1942,19 @@ const AddAsset = () => {
                                 columnGap: 2,
                                 px: 2,
                                 py: 1.25,
-                                bgcolor: "grey.100",
+                                bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                                 borderBottom: 1,
-                                borderColor: "divider",
+                                borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                 position: "sticky",
                                 top: 0,
                                 zIndex: 1,
                               }}
                             >
-                              <Typography variant="subtitle2">Sender</Typography>
-                              <Typography variant="subtitle2">Subject</Typography>
-                              <Typography variant="subtitle2">Email Date</Typography>
-                              <Typography variant="subtitle2">Status</Typography>
-                              <Typography variant="subtitle2">Action</Typography>
+                              <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Sender</Typography>
+                              <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Subject</Typography>
+                              <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Email Date</Typography>
+                              <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Status</Typography>
+                              <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Action</Typography>
                             </Box>
 
                             {suggestions.map((suggestion) => {
@@ -2178,10 +2181,12 @@ const AddAsset = () => {
 
                         {filteredExcelSuggestions.length > 0 ? (
                           <Paper
+                            className="grid-container"
                             variant="outlined"
                             sx={{
                               maxHeight: 480,
-                              overflow: "auto",
+                              overflowX: "auto",
+                              overflowY: "auto",
                               position: "relative",
                               borderRadius: 1,
                             }}
@@ -2189,13 +2194,14 @@ const AddAsset = () => {
                             <Box
                               sx={{
                                 display: "grid",
-                                gridTemplateColumns: `76px ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" ")} ${FROZEN_COLUMN_WIDTHS.error}px ${FROZEN_COLUMN_WIDTHS.status}px ${FROZEN_COLUMN_WIDTHS.actions}px`,
+                                gridTemplateColumns: EXCEL_PREVIEW_GRID_TEMPLATE,
                                 columnGap: 0,
                                 px: 2,
                                 py: 1.25,
-                                bgcolor: "grey.100",
+                                minWidth: EXCEL_PREVIEW_GRID_MIN_WIDTH,
+                                bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                                 borderBottom: 1,
-                                borderColor: "divider",
+                                borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                 position: "sticky",
                                 top: 0,
                                 zIndex: 30,
@@ -2225,45 +2231,81 @@ const AddAsset = () => {
                                 />
                               </Box>
                               {EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => (
-                                <Typography key={column.key} variant="subtitle2" noWrap sx={{ px: 1 }}>
+                                <Typography
+                                  key={column.key}
+                                  variant="subtitle2"
+                                  noWrap
+                                  sx={{
+                                    px: 1,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined,
+                                    fontWeight: 600,
+                                  }}
+                                >
                                   {column.label}
                                 </Typography>
                               ))}
                               <Typography
+                                className="frozen-column"
                                 variant="subtitle2"
                                 sx={{
                                   position: "sticky",
                                   right: FROZEN_COLUMN_WIDTHS.status + FROZEN_COLUMN_WIDTHS.actions,
-                                  zIndex: 40,
-                                  bgcolor: "grey.100",
+                                  zIndex: 5,
+                                  bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                                   px: 1,
                                   textAlign: "left",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined,
+                                  fontWeight: 600,
+                                  borderLeft: 1,
+                                  borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                 }}
                               >
                                 Error
                               </Typography>
                               <Typography
+                                className="frozen-column"
                                 variant="subtitle2"
                                 sx={{
                                   position: "sticky",
                                   right: FROZEN_COLUMN_WIDTHS.actions,
-                                  zIndex: 40,
-                                  bgcolor: "grey.100",
+                                  zIndex: 6,
+                                  bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                                   px: 1,
                                   textAlign: "left",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined,
+                                  fontWeight: 600,
+                                  borderLeft: 1,
+                                  borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                 }}
                               >
                                 Status
                               </Typography>
                               <Typography
+                                className="frozen-column"
                                 variant="subtitle2"
                                 sx={{
                                   position: "sticky",
                                   right: 0,
-                                  zIndex: 40,
-                                  bgcolor: "grey.100",
+                                  zIndex: 7,
+                                  bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                                   px: 1,
                                   textAlign: "left",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined,
+                                  fontWeight: 600,
+                                  borderLeft: 1,
+                                  borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                 }}
                               >
                                 Actions
@@ -2278,17 +2320,23 @@ const AddAsset = () => {
                                 const rowHasValidationError = !isExcelRowValid(item);
                                 return (
                                   <Box
+                                    className={rowHasValidationError ? "error-row" : undefined}
                                     key={item.id}
                                     sx={{
                                       display: "grid",
-                                      gridTemplateColumns: `76px ${EXCEL_DEFAULT_PREVIEW_COLUMNS.map((column) => column.width).join(" ")} ${FROZEN_COLUMN_WIDTHS.error}px ${FROZEN_COLUMN_WIDTHS.status}px ${FROZEN_COLUMN_WIDTHS.actions}px`,
+                                      gridTemplateColumns: EXCEL_PREVIEW_GRID_TEMPLATE,
                                       columnGap: 0,
                                       alignItems: "center",
                                       px: 2,
                                       py: 1.1,
+                                      minWidth: EXCEL_PREVIEW_GRID_MIN_WIDTH,
                                       borderBottom: 1,
                                       borderColor: "divider",
-                                      bgcolor: rowHasValidationError ? "#fdeaea" : "transparent",
+                                      bgcolor: "transparent",
+                                      "&.error-row .excel-cell-text": {
+                                        color: "#ef4444",
+                                        fontWeight: 500,
+                                      },
                                     }}
                                   >
                                     <Checkbox
@@ -2303,7 +2351,7 @@ const AddAsset = () => {
                                       const value = getExcelCellValue(item, column.key);
                                       return (
                                         <Tooltip key={`${item.id}-${column.key}`} title={value || "-"} arrow>
-                                          <Typography variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis", px: 1 }}>
+                                          <Typography className="excel-cell-text" variant="body2" noWrap sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", px: 1 }}>
                                             {value || "-"}
                                           </Typography>
                                         </Tooltip>
@@ -2311,46 +2359,59 @@ const AddAsset = () => {
                                     })}
                                     <Tooltip title={rowErrors.length ? rowErrors.join("; ") : "-"} arrow>
                                       <Typography
+                                        className="excel-cell-text frozen-column"
                                         variant="body2"
                                         noWrap
                                         sx={{
                                           overflow: "hidden",
                                           textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
                                           color: rowErrors.length ? "error.main" : "text.secondary",
                                           fontWeight: rowErrors.length ? 500 : 400,
                                           position: "sticky",
                                           right: FROZEN_COLUMN_WIDTHS.status + FROZEN_COLUMN_WIDTHS.actions,
-                                          zIndex: 10,
-                                          bgcolor: rowHasValidationError ? "#fdeaea" : "background.paper",
+                                          zIndex: 5,
+                                          bgcolor: "background.paper",
                                           px: 1,
+                                          borderLeft: 1,
+                                          borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                         }}
                                       >
                                         {rowErrors.length ? rowErrors.join(", ") : "-"}
                                       </Typography>
                                     </Tooltip>
                                     <Typography
+                                      className="excel-cell-text frozen-column"
                                       variant="body2"
                                       sx={{
                                         color: statusMeta.color,
                                         fontWeight: 600,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
                                         position: "sticky",
                                         right: FROZEN_COLUMN_WIDTHS.actions,
-                                        zIndex: 10,
-                                        bgcolor: rowHasValidationError ? "#fdeaea" : "background.paper",
+                                        zIndex: 6,
+                                        bgcolor: "background.paper",
                                         px: 1,
+                                        borderLeft: 1,
+                                        borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                       }}
                                     >
                                       {statusMeta.label}
                                     </Typography>
                                     <Stack
+                                      className="frozen-column"
                                       direction="row"
                                       spacing={0.25}
                                       sx={{
                                         position: "sticky",
                                         right: 0,
-                                        zIndex: 10,
-                                        bgcolor: rowHasValidationError ? "#fdeaea" : "background.paper",
+                                        zIndex: 7,
+                                        bgcolor: "background.paper",
                                         px: 1,
+                                        borderLeft: 1,
+                                        borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                                       }}
                                     >
                                       <Tooltip title="Open edit form" arrow>

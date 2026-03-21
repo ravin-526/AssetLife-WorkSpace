@@ -315,20 +315,20 @@ const Reminders = () => {
                         columnGap: 2,
                         px: 2,
                         py: 1.25,
-                        bgcolor: "grey.100",
+                        bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                         borderBottom: 1,
-                        borderColor: "divider",
+                        borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                         position: "sticky",
                         top: 0,
                         zIndex: 1,
                       }}
                     >
-                      <Typography variant="subtitle2">Reminder Title</Typography>
-                      <Typography variant="subtitle2">Asset Name</Typography>
-                      <Typography variant="subtitle2">Reminder Date</Typography>
-                      <Typography variant="subtitle2">Reminder Type</Typography>
-                      <Typography variant="subtitle2">Status</Typography>
-                      <Typography variant="subtitle2">Actions</Typography>
+                      <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Reminder Title</Typography>
+                      <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Asset Name</Typography>
+                      <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Reminder Date</Typography>
+                      <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Reminder Type</Typography>
+                      <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Status</Typography>
+                      <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Actions</Typography>
                     </Box>
 
                     {filteredReminders.map((reminder) => (

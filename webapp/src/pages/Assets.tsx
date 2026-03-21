@@ -1825,9 +1825,9 @@ const Assets = () => {
                             gridTemplateColumns: "110px 1.6fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 1.1fr 140px",
                             columnGap: 2,
                             py: 1.25,
-                            bgcolor: "grey.100",
+                            bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                             borderBottom: 1,
-                            borderColor: "divider",
+                            borderColor: (theme) => theme.palette.mode === "dark" ? "#374151" : "divider",
                             position: "sticky",
                             top: 0,
                             zIndex: 2,
@@ -1838,7 +1838,7 @@ const Assets = () => {
                               pl: 2,
                               position: "sticky",
                               left: 0,
-                              bgcolor: "grey.100",
+                              bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                               zIndex: 1,
                               display: "flex",
                               alignItems: "center",
@@ -1846,22 +1846,22 @@ const Assets = () => {
                               borderColor: "divider",
                             }}
                           >
-                            <Typography variant="subtitle2">Status</Typography>
+                            <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Status</Typography>
                           </Box>
-                          <Typography variant="subtitle2">Asset Name</Typography>
-                          <Typography variant="subtitle2">Category</Typography>
-                          <Typography variant="subtitle2">Vendor</Typography>
-                          <Typography variant="subtitle2">Source</Typography>
-                          <Typography variant="subtitle2">Purchase Date</Typography>
-                          <Typography variant="subtitle2">Warranty Expiry</Typography>
-                          <Typography variant="subtitle2">Insurance Expiry</Typography>
-                          <Typography variant="subtitle2">Next Service Date</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Asset Name</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Category</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Vendor</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Source</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Purchase Date</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Warranty Expiry</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Insurance Expiry</Typography>
+                          <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Next Service Date</Typography>
                           <Box
                             sx={{
                               pl: 1,
                               position: "sticky",
                               right: 0,
-                              bgcolor: "grey.100",
+                              bgcolor: (theme) => theme.palette.mode === "dark" ? "#1f2937" : "grey.100",
                               zIndex: 1,
                               display: "flex",
                               alignItems: "center",
@@ -1870,7 +1870,7 @@ const Assets = () => {
                               borderColor: "divider",
                             }}
                           >
-                            <Typography variant="subtitle2">Actions</Typography>
+                            <Typography variant="subtitle2" sx={{ color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : undefined, fontWeight: 600 }}>Actions</Typography>
                           </Box>
                         </Box>
 

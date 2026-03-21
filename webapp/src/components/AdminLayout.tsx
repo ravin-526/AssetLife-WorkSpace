@@ -293,7 +293,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
                 color: "text.primary",
               }}
             >
-              AssetLife
+              <span className="brand-gradient">AssetLife</span>
             </Typography>
           ) : null}
         </Box>

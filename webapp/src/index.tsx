@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "primeflex/primeflex.css";
 import "primeicons/primeicons.css";
+import "./styles/branding.css";
 
 import App from "./App.tsx";
 

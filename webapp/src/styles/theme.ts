@@ -214,6 +214,51 @@ export const getTheme = (mode: PaletteMode) => {
           },
         },
       },
+      MuiTableHead: {
+        styleOverrides: {
+          root: {
+            backgroundColor: isLight ? 'transparent' : '#1f2937',
+            borderBottom: isLight ? undefined : '1px solid #374151',
+          },
+        },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          head: {
+            color: isLight ? undefined : '#e5e7eb',
+            fontWeight: 600,
+            borderBottom: isLight ? undefined : '1px solid #374151',
+          },
+        },
+      },
+      MuiTableSortLabel: {
+        styleOverrides: {
+          root: {
+            color: isLight ? undefined : '#e5e7eb',
+            '&.Mui-active': {
+              color: isLight ? undefined : '#e5e7eb',
+            },
+          },
+          icon: {
+            color: isLight ? undefined : '#e5e7eb !important',
+          },
+        },
+      },
+      MuiCssBaseline: {
+        styleOverrides: {
+          '.MuiDataGrid-columnHeaders': {
+            backgroundColor: isLight ? undefined : '#1f2937',
+            borderBottom: isLight ? undefined : '1px solid #374151',
+          },
+          '.MuiDataGrid-columnHeaderTitle': {
+            color: isLight ? undefined : '#e5e7eb',
+            fontWeight: 600,
+          },
+          '.MuiDataGrid-sortIcon, .MuiDataGrid-menuIconButton, .MuiDataGrid-iconSeparator': {
+            color: isLight ? undefined : '#e5e7eb',
+          },
+        },
+      },
     },
   });
 };

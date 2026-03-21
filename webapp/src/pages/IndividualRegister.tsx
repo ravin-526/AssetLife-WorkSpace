@@ -272,7 +272,7 @@ const IndividualRegister = () => {
                   mb: 1,
                 }}
               />
-              <Typography variant="h5">AssetLife</Typography>
+              <Typography variant="h5"><span className="brand-gradient">AssetLife</span></Typography>
               <Typography variant="body2" color="text.secondary">
                 Individual Registration
               </Typography>
