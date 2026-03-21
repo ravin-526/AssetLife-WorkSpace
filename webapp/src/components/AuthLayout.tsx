@@ -1,9 +1,10 @@
-import { Box, useTheme } from "@mui/material";
+import { Box, ThemeProvider, useTheme } from "@mui/material";
 import { keyframes } from "@emotion/react";
 import { Outlet } from "react-router-dom";
 
 import AuthLegalFooter from "./AuthLegalFooter.tsx";
 import AuthPageHeader from "./AuthPageHeader.tsx";
+import { getTheme } from "../styles/theme";
 
 type BackgroundIcon = {
   src: string;
@@ -45,11 +46,14 @@ const floatAnim = keyframes`
   100% { transform: translateY(0px)   translateX(0px)   rotate(0deg); }
 `;
 
+const lightTheme = getTheme("light");
+
 const AuthLayout = () => {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === "dark";
 
   return (
+    <ThemeProvider theme={lightTheme}>
     <Box
       className="auth-layout login-page"
       sx={{
@@ -134,6 +138,7 @@ const AuthLayout = () => {
         </Box>
       ))}
     </Box>
+    </ThemeProvider>
   );
 };
 

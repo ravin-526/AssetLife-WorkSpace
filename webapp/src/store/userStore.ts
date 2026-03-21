@@ -63,10 +63,12 @@ const useUserStore = create<UserStore>((set) => ({
   logout: () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LEGACY_TOKEN_KEY);
+    localStorage.setItem(THEME_PREFERENCE_KEY, "light");
     set({
       token: null,
       user: null,
       isAuthenticated: false,
+      themePreference: "light",
     });
   },
   updateUser: (user) => {
