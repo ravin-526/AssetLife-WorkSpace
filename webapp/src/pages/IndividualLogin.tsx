@@ -189,112 +189,118 @@ const IndividualLogin = () => {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        px: 2,
-        bgcolor: "background.default",
+        width: "100%",
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        py: { xs: 2, sm: 3 },
       }}
     >
-      <Paper
-        elevation={4}
-        sx={{
-          width: "100%",
-          maxWidth: 440,
-          p: { xs: 3, sm: 4 },
-          borderRadius: 3,
-          bgcolor: "background.paper",
-          border: "1px solid",
-          borderColor: "divider",
-        }}
-      >
-        <Stack spacing={3}>
-          <Box sx={{ textAlign: "center" }}>
-            <Box
-              component="img"
-              src={LOGO}
-              alt="AssetLife Logo"
-              sx={{
-                width: 84,
-                height: 84,
-                display: "block",
-                mx: "auto",
-                mb: 1,
-              }}
-            />
-            <Typography variant="h5"><span className="brand-gradient">AssetLife</span></Typography>
-            <Typography variant="body2" color="text.secondary">
-              Individual Login
-            </Typography>
-          </Box>
-
-          {error ? <Alert severity="error">{error}</Alert> : null}
-          {message ? <Alert severity="success">{message}</Alert> : null}
-
-          <TextField
-            label="Email or Phone"
-            placeholder="Enter mobile number"
-            value={identifier}
-            onChange={(event) => {
-              setIdentifier(event.target.value);
-              if (errors.identifier) {
-                setErrors((prev) => ({ ...prev, identifier: undefined }));
-              }
-            }}
-            error={Boolean(errors.identifier)}
-            helperText={errors.identifier}
-            fullWidth
-          />
-
-          {otpSent ? (
-            <Box>
-              <Typography variant="body2" sx={{ mb: 1 }}>OTP</Typography>
-              <OtpInput
-                length={6}
-                value={otp}
-                onChange={(nextOtp) => {
-                  setOtp(nextOtp);
-                  if (errors.otp) {
-                    setErrors((prev) => ({ ...prev, otp: undefined }));
-                  }
+        {/* Login Box - UNCHANGED */}
+        <Paper
+          elevation={4}
+          sx={{
+            width: "100%",
+            maxWidth: 420,
+            p: { xs: 3, sm: 4 },
+            borderRadius: 3,
+            bgcolor: "background.paper",
+            position: "relative",
+            zIndex: 1,
+            border: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Stack spacing={3}>
+            <Box sx={{ textAlign: "center" }}>
+              <Box
+                component="img"
+                src={LOGO}
+                alt="AssetLife Logo"
+                sx={{
+                  width: 143,
+                  height: 143,
+                  display: "block",
+                  mx: "auto",
+                  mb: 1,
                 }}
-                disabled={sendingOtp || verifyingOtp}
               />
-              {errors.otp ? (
-                <Typography variant="caption" color="error" sx={{ mt: 1, display: "block" }}>
-                  {errors.otp}
-                </Typography>
-              ) : null}
+              <Typography className="brand-name" sx={{ fontSize: { xs: "1.6rem", sm: "2.2rem" }, fontWeight: 700, lineHeight: 1.05 }}>
+                <span className="brand-gradient">AssetLife</span>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Individual Login
+              </Typography>
             </Box>
-          ) : null}
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <Button
-              variant="contained"
-              onClick={handleSendOtp}
-              disabled={isOtpButtonDisabled || sendingOtp || verifyingOtp}
+            {error ? <Alert severity="error">{error}</Alert> : null}
+            {message ? <Alert severity="success">{message}</Alert> : null}
+
+            <TextField
+              label="Email or Phone"
+              placeholder="Enter mobile number"
+              value={identifier}
+              onChange={(event) => {
+                setIdentifier(event.target.value);
+                if (errors.identifier) {
+                  setErrors((prev) => ({ ...prev, identifier: undefined }));
+                }
+              }}
+              error={Boolean(errors.identifier)}
+              helperText={errors.identifier}
               fullWidth
-            >
-              {sendingOtp ? "Sending OTP..." : otpCooldown > 0 ? `Resend OTP (${otpCooldown}s)` : "Send OTP"}
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleVerifyOtp}
-              disabled={!otpSent || sendingOtp || verifyingOtp}
-              fullWidth
-            >
-              {verifyingOtp ? "Verifying..." : "Verify OTP"}
-            </Button>
+            />
+
+            {otpSent ? (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1 }}>OTP</Typography>
+                <OtpInput
+                  length={6}
+                  value={otp}
+                  onChange={(nextOtp) => {
+                    setOtp(nextOtp);
+                    if (errors.otp) {
+                      setErrors((prev) => ({ ...prev, otp: undefined }));
+                    }
+                  }}
+                  disabled={sendingOtp || verifyingOtp}
+                />
+                {errors.otp ? (
+                  <Typography variant="caption" color="error" sx={{ mt: 1, display: "block" }}>
+                    {errors.otp}
+                  </Typography>
+                ) : null}
+              </Box>
+            ) : null}
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+              <Button
+                variant="contained"
+                onClick={handleSendOtp}
+                disabled={isOtpButtonDisabled || sendingOtp || verifyingOtp}
+                fullWidth
+              >
+                {sendingOtp ? "Sending OTP..." : otpCooldown > 0 ? `Resend OTP (${otpCooldown}s)` : "Send OTP"}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleVerifyOtp}
+                disabled={!otpSent || sendingOtp || verifyingOtp}
+                fullWidth
+              >
+                {verifyingOtp ? "Verifying..." : "Verify OTP"}
+              </Button>
+            </Stack>
+
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+              New user?{" "}
+              <MuiLink component={Link} to="/register" underline="hover">
+                Create an account
+              </MuiLink>
+            </Typography>
           </Stack>
-
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-            New user?{" "}
-            <MuiLink component={Link} to="/register" underline="hover">
-              Create an account
-            </MuiLink>
-          </Typography>
-        </Stack>
-      </Paper>
+        </Paper>
     </Box>
   );
 };

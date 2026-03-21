@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Invoice/Document Icon -->
+  <rect x="40" y="20" width="120" height="160" rx="6" stroke="currentColor" stroke-width="8"/>
+  <line x1="60" y1="50" x2="140" y2="50" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+  <line x1="60" y1="80" x2="140" y2="80" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+  <line x1="60" y1="110" x2="120" y2="110" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+</svg>

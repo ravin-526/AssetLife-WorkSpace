@@ -1,17 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Alert,
   Box,
   Button,
-  CssBaseline,
   Link as MuiLink,
   Paper,
   Stack,
   TextField,
-  ThemeProvider,
   Typography,
-  useMediaQuery,
 } from "@mui/material";
 
 import api from "../services/api.ts";
@@ -19,7 +16,6 @@ import OtpInput from "../components/OtpInput.tsx";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import useUserStore, { UserData } from "../store/userStore.ts";
 import { LOGO } from "../constants/logo.ts";
-import { getTheme } from "../styles/theme";
 
 type RegisterResponse = {
   message?: string;
@@ -39,10 +35,6 @@ type VerifyOtpResponse = {
 const IndividualRegister = () => {
   const navigate = useNavigate();
   const login = useUserStore((state) => state.login);
-
-  const prefersDarkMode = useMediaQuery("(prefers-color-scheme: dark)");
-  const mode = prefersDarkMode ? "dark" : "light";
-  const theme = useMemo(() => getTheme(mode), [mode]);
 
   const [name, setName] = useState("");
   const [emailOrPhone, setEmailOrPhone] = useState("");
@@ -235,22 +227,20 @@ const IndividualRegister = () => {
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box
-        sx={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          px: 2,
-          bgcolor: "background.default",
-        }}
-      >
+    <Box
+      sx={{
+        width: "100%",
+        flex: 1,
+        display: "grid",
+        placeItems: "center",
+        py: { xs: 2, sm: 3 },
+      }}
+    >
         <Paper
-          elevation={mode === "dark" ? 2 : 4}
+          elevation={4}
           sx={{
             width: "100%",
-            maxWidth: 500,
+            maxWidth: 420,
             p: { xs: 3, sm: 4 },
             borderRadius: 3,
             bgcolor: "background.paper",
@@ -265,14 +255,16 @@ const IndividualRegister = () => {
                 src={LOGO}
                 alt="AssetLife Logo"
                 sx={{
-                  width: 84,
-                  height: 84,
+                  width: 143,
+                  height: 143,
                   display: "block",
                   mx: "auto",
                   mb: 1,
                 }}
               />
-              <Typography variant="h5"><span className="brand-gradient">AssetLife</span></Typography>
+              <Typography className="brand-name" sx={{ fontSize: { xs: "1.6rem", sm: "2.2rem" }, fontWeight: 700, lineHeight: 1.05 }}>
+                <span className="brand-gradient">AssetLife</span>
+              </Typography>
               <Typography variant="body2" color="text.secondary">
                 Individual Registration
               </Typography>
@@ -365,8 +357,7 @@ const IndividualRegister = () => {
             </Typography>
           </Stack>
         </Paper>
-      </Box>
-    </ThemeProvider>
+    </Box>
   );
 };
 

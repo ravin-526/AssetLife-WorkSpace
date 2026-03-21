@@ -3,6 +3,7 @@ import { CssBaseline, GlobalStyles, ThemeProvider } from "@mui/material";
 import { useEffect, useMemo } from "react";
 
 import AdminLayout from "./components/AdminLayout.tsx";
+import AuthLayout from "./components/AuthLayout.tsx";
 import PrivateRoute from "./components/PrivateRoute.tsx";
 import AddAsset from "./pages/AddAsset.tsx";
 import AssetSuggestions from "./pages/AssetSuggestions.tsx";
@@ -18,6 +19,13 @@ import Reminders from "./pages/Reminders.tsx";
 import Reports from "./pages/Reports.tsx";
 import Settings from "./pages/Settings.tsx";
 import Users from "./pages/Users.tsx";
+import About from "./pages/legal/About.tsx";
+import Contact from "./pages/legal/Contact.tsx";
+import CookiePolicy from "./pages/legal/CookiePolicy.tsx";
+import Disclaimer from "./pages/legal/Disclaimer.tsx";
+import Help from "./pages/legal/Help.tsx";
+import PrivacyPolicy from "./pages/legal/PrivacyPolicy.tsx";
+import Terms from "./pages/legal/Terms.tsx";
 import api from "./services/api.ts";
 import useUserStore from "./store/userStore.ts";
 import { getTheme } from "./styles/theme";
@@ -43,6 +51,13 @@ const getPageTitle = (pathname: string) => {
     "/users": "Users",
     "/profile": "Profile",
     "/settings": "Settings",
+    "/privacy-policy": "Privacy Policy",
+    "/terms": "Terms & Conditions",
+    "/disclaimer": "Disclaimer",
+    "/cookies": "Cookie Policy",
+    "/about": "About Us",
+    "/contact": "Contact Us",
+    "/help": "Help & FAQ",
   };
 
   return `AssetLife - ${titleMap[pathname] ?? "Dashboard"}`;
@@ -125,8 +140,18 @@ const App = () => {
         <DocumentTitleManager />
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/register" element={<IndividualRegister />} />
-          <Route path="/login" element={<IndividualLogin />} />
+
+          <Route element={<AuthLayout />}>
+            <Route path="/register" element={<IndividualRegister />} />
+            <Route path="/login" element={<IndividualLogin />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/disclaimer" element={<Disclaimer />} />
+            <Route path="/cookies" element={<CookiePolicy />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/help" element={<Help />} />
+          </Route>
 
           <Route
             element={
