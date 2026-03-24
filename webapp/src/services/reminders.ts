@@ -2,12 +2,14 @@ import api from "./api.ts";
 
 export type ReminderStatus = "active" | "completed" | "snoozed";
 export type ReminderType = "warranty" | "service" | "custom";
+export type ReminderScope = "asset" | "custom";
 
 export type Reminder = {
   id: string;
   title: string;
-  asset_id: string;
+  asset_id?: string | null;
   asset_name?: string;
+  type: ReminderScope;
   reminder_date: string;
   reminder_type: ReminderType;
   status: ReminderStatus;
@@ -18,7 +20,9 @@ export type Reminder = {
 
 export type ReminderPayload = {
   title: string;
-  asset_id: string;
+  asset_id?: string;
+  asset_name?: string;
+  type?: ReminderScope;
   reminder_date: string;
   reminder_type: ReminderType;
   status?: ReminderStatus;
@@ -31,6 +35,7 @@ type ReminderApiResponse = {
   title?: string;
   reminder_title?: string;
   asset_id?: string;
+  type?: string;
   asset_name?: string;
   assetName?: string;
   reminder_date?: string;
@@ -66,11 +71,15 @@ const toReminderStatus = (value: string | undefined): ReminderStatus => {
 };
 
 const normalizeReminder = (item: ReminderApiResponse): Reminder => {
+  const assetId = String(item.asset_id || "").trim();
+  const scope = String(item.type || "").trim().toLowerCase();
+
   return {
     id: String(item.id || item._id || ""),
     title: String(item.title || item.reminder_title || ""),
-    asset_id: String(item.asset_id || ""),
+    asset_id: assetId || null,
     asset_name: item.asset_name || item.assetName || undefined,
+    type: scope === "asset" || scope === "custom" ? scope : assetId ? "asset" : "custom",
     reminder_date: String(item.reminder_date || item.reminderDate || ""),
     reminder_type: toReminderType(item.reminder_type || item.reminderType),
     status: toReminderStatus(item.status),

@@ -548,7 +548,7 @@ const Dashboard = () => {
 
     const penalties = (summary["Expired"] || 0) * 20 + criticalInsights.overdueService * 20 + missingInsurance * 10 + missingWarranty * 10;
     const healthScore =
-      assets.length === 0 ? 100 : Math.max(0, Math.min(100, Math.round(100 - penalties / assets.length)));
+      assets.length === 0 ? 0 : Math.max(0, Math.min(100, Math.round(100 - penalties / assets.length)));
 
     return {
       criticalItemsThisWeek: criticalInsights.criticalItemsThisWeek,
@@ -889,13 +889,13 @@ const Dashboard = () => {
               >
                 <Typography variant="h6" sx={{ mb: 1.5 }}>Asset Health</Typography>
                 <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-                  {dashboardInsights.healthScore}%
+                  {assets.length === 0 ? "No Assets" : `${dashboardInsights.healthScore}%`}
                 </Typography>
                 <LinearProgress
                   variant="determinate"
                   value={dashboardInsights.healthScore}
                   sx={{ height: 8, borderRadius: 999, mb: 1.5 }}
-                  color={dashboardInsights.healthScore >= 80 ? "success" : dashboardInsights.healthScore >= 60 ? "warning" : "error"}
+                  color={assets.length === 0 ? "info" : dashboardInsights.healthScore >= 80 ? "success" : dashboardInsights.healthScore >= 60 ? "warning" : "error"}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>
                   {dashboardInsights.missingInsurance} missing insurance

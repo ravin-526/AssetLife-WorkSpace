@@ -4,8 +4,10 @@ import {
   AppBar,
   Box,
   Button,
+  CircularProgress,
   Collapse,
   Drawer,
+  Fab,
   IconButton,
   InputBase,
   List,
@@ -120,6 +122,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
   const [activePath, setActivePath] = useState("/dashboard");
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [addAssetDialOpen, setAddAssetDialOpen] = useState(false);
+  const [mainFabHovered, setMainFabHovered] = useState(false);
   const [assetsMenuOpen, setAssetsMenuOpen] = useState(true);
   const [addAssetsMenuOpen, setAddAssetsMenuOpen] = useState(true);
   const [expandedDrawerWidth, setExpandedDrawerWidth] = useState(SIDEBAR_WIDTH);
@@ -204,6 +207,9 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
     [muiTheme]
   );
   const layoutTheme = useMemo(() => getTheme(mode), [mode]);
+  const isReminderShortcutVisible = mainFabHovered;
+  const mainFabSize = 56;
+  const fabGap = 10;
 
   const userDisplayName = user?.name || "User";
 
@@ -655,42 +661,88 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
           <Outlet />
         </Box>
 
-        <SpeedDial
-          ariaLabel="Add Asset"
-          icon={<AddIcon />}
-          onClose={() => setAddAssetDialOpen(false)}
-          onOpen={() => setAddAssetDialOpen(true)}
-          open={addAssetDialOpen}
+        <Box
           sx={{
             position: "fixed",
-            right: { xs: 16, sm: 20, md: 24 },
-            bottom: { xs: 16, sm: 20, md: 24 },
+            right: 24,
+            bottom: 24,
+            width: mainFabSize * 2 + fabGap + 60,
+            height: mainFabSize,
+            pl: "60px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
             zIndex: muiTheme.zIndex.modal - 1,
             opacity: isScrolling ? 0.1 : 0.85,
             transition: "opacity 0.25s ease",
-            "& .MuiFab-primary": {
-              boxShadow: muiTheme.shadows[8],
-              transition: "transform 0.25s ease, box-shadow 0.25s ease",
-            },
-            "& .MuiFab-primary:hover": {
-              transform: "scale(1.06)",
-              boxShadow: muiTheme.shadows[12],
-            },
           }}
+          onMouseEnter={() => setMainFabHovered(true)}
+          onMouseLeave={() => setMainFabHovered(false)}
         >
-          {addAssetActions.map((action) => (
-            <SpeedDialAction
-              key={action.name}
-              icon={action.icon}
-              tooltipTitle={action.name}
-              tooltipOpen={isSmallScreen}
-              onClick={() => {
-                setAddAssetDialOpen(false);
-                navigate(`/assets/add?mode=${action.mode}`);
-              }}
-            />
-          ))}
-        </SpeedDial>
+          <Fab
+            size="large"
+            color="primary"
+            aria-label="Add Reminder"
+            onClick={() => {
+              setAddAssetDialOpen(false);
+              navigate("/reminders", { state: { openCreate: true } });
+            }}
+            sx={{
+              position: "absolute",
+              right: mainFabSize + fabGap,
+              bottom: 0,
+              visibility: isReminderShortcutVisible ? "visible" : "hidden",
+              pointerEvents: isReminderShortcutVisible ? "auto" : "none",
+              opacity: isReminderShortcutVisible ? 1 : 0,
+              transform: isReminderShortcutVisible ? "translateX(0)" : "translateX(10px)",
+              transition: "opacity 0.22s ease, transform 0.22s ease",
+              boxShadow: muiTheme.shadows[8],
+              "&:hover": {
+                transform: "scale(1.06)",
+                boxShadow: muiTheme.shadows[12],
+              },
+            }}
+          >
+            <AlarmIcon />
+          </Fab>
+
+          <SpeedDial
+            ariaLabel="Add Asset"
+            icon={<AddIcon />}
+            onClose={() => {
+              setAddAssetDialOpen(false);
+            }}
+            onOpen={() => setAddAssetDialOpen(true)}
+            open={addAssetDialOpen}
+            sx={{
+              position: "absolute",
+              right: 0,
+              bottom: 0,
+              "& .MuiFab-primary": {
+                boxShadow: muiTheme.shadows[8],
+                transition: "transform 0.25s ease, box-shadow 0.25s ease",
+              },
+              "& .MuiFab-primary:hover": {
+                transform: "scale(1.06)",
+                boxShadow: muiTheme.shadows[12],
+              },
+            }}
+          >
+            {addAssetActions.map((action) => (
+              <SpeedDialAction
+                key={action.name}
+                icon={action.icon}
+                tooltipTitle={action.name}
+                tooltipOpen={isSmallScreen}
+                onClick={() => {
+                  setAddAssetDialOpen(false);
+                  setMainFabHovered(false);
+                  navigate(`/assets/add?mode=${action.mode}`);
+                }}
+              />
+            ))}
+          </SpeedDial>
+        </Box>
       </Box>
     </Box>
   );
