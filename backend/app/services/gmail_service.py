@@ -182,15 +182,23 @@ class GmailService:
         profile_email = await self._get_profile_email(user_id)
         return {"connected": False, "mailbox_type": "gmail", "email_address": profile_email, "last_sync_at": None}
 
-    async def start_connection(self, user_id: str, email: str | None) -> dict[str, str]:
+    async def start_connection(self, user_id: str, email: str | None, source: str = "web") -> dict[str, str]:
         normalized_email = (email or "").strip().lower()
+        normalized_source = (source or "web").strip().lower()
+        if normalized_source not in {"web", "mobile"}:
+            normalized_source = "web"
         now = self._now()
         profile_email = await self._get_profile_email(user_id)
         existing = await self.integrations.find_one({"user_id": self._normalize_user_id(user_id), "provider": "gmail"})
         effective_email = normalized_email or profile_email or str((existing or {}).get("email_address") or "").strip().lower() or None
 
+        # Compose state as base64-encoded JSON with source
+        state_obj = {"source": normalized_source, "nonce": secrets.token_urlsafe(8)}
+        state_json = json.dumps(state_obj)
+        state_bytes = state_json.encode("utf-8")
+        state_b64 = base64.urlsafe_b64encode(state_bytes).decode("utf-8").rstrip("=")
+
         if self._env_tokens_available() and not self._is_oauth_configured():
-            state = secrets.token_urlsafe(24)
             final_email = effective_email or settings.GMAIL_EMAIL_ADDRESS or None
             await self.integrations.update_one(
                 {"user_id": self._normalize_user_id(user_id), "provider": "gmail"},
@@ -207,19 +215,21 @@ class GmailService:
                         "updated_at": now,
                         "created_at": now,
                         "oauth_mode": "env",
+                        "oauth_source": normalized_source,
+                        "oauth_state": state_b64,
                     }
                 },
                 upsert=True,
             )
             await self._set_profile_email(user_id, final_email)
-            return {"auth_url": "/assets/add?method=email_sync&status=connected", "state": state}
+            return {"auth_url": "/assets/add?method=email_sync&status=connected", "state": state_b64}
 
         if not self._is_oauth_configured():
             raise HTTPException(status_code=400, detail="Gmail OAuth is not configured")
 
         client_id, _, redirect_uri = self._get_google_oauth_credentials()
+        print("FINAL REDIRECT URI:", redirect_uri)
 
-        state = secrets.token_urlsafe(24)
         scope = settings.GMAIL_OAUTH_SCOPES or "https://www.googleapis.com/auth/gmail.readonly"
         query = {
             "client_id": client_id,
@@ -228,7 +238,7 @@ class GmailService:
             "scope": scope,
             "access_type": "offline",
             "prompt": "consent",
-            "state": state,
+            "state": state_b64,
         }
         if effective_email:
             query["login_hint"] = effective_email
@@ -242,7 +252,8 @@ class GmailService:
                     "connected": False,
                     "email_address": effective_email,
                     "pending_email": effective_email,
-                    "oauth_state": state,
+                    "oauth_state": state_b64,
+                    "oauth_source": normalized_source,
                     "updated_at": now,
                 },
                 "$setOnInsert": {"created_at": now},
@@ -251,7 +262,7 @@ class GmailService:
         )
 
         auth_url = f"{self.AUTH_ENDPOINT}?{urllib.parse.urlencode(query)}"
-        return {"auth_url": auth_url, "state": state}
+        return {"auth_url": auth_url, "state": state_b64}
 
     async def complete_connection(self, user_id: str, code: str, state: str) -> None:
         integration = await self.integrations.find_one({"user_id": self._normalize_user_id(user_id), "provider": "gmail"})
@@ -315,8 +326,11 @@ class GmailService:
             raise HTTPException(status_code=400, detail="Invalid or expired Gmail OAuth state")
 
         user_id = str(integration.get("user_id"))
+        oauth_source = str(integration.get("oauth_source") or "web").strip().lower()
         await self.complete_connection(user_id, code, state)
-        return await self.get_connection_status(user_id)
+        status = await self.get_connection_status(user_id)
+        status["oauth_source"] = oauth_source
+        return status
 
     async def disconnect(self, user_id: str) -> None:
         now = self._now()

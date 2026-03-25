@@ -7,11 +7,11 @@ class ApiClient {
   late Dio _dio;
   static const _secureStorage = FlutterSecureStorage();
   final VoidCallback? onUnauthorized;
-  
+
   ApiClient({this.onUnauthorized}) {
     _initializeDio();
   }
-  
+
   void _initializeDio() {
     _dio = Dio(
       BaseOptions(
@@ -22,7 +22,7 @@ class ApiClient {
         responseType: ResponseType.json,
       ),
     );
-    
+
     // Add interceptors
     _dio.interceptors.add(
       InterceptorsWrapper(
@@ -32,7 +32,7 @@ class ApiClient {
       ),
     );
   }
-  
+
   Future<void> _onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
@@ -51,12 +51,14 @@ class ApiClient {
 
   void _onResponse(Response response, ResponseInterceptorHandler handler) {
     if (kDebugMode) {
-      debugPrint('[API] response (${response.statusCode}) ${response.requestOptions.path}');
+      debugPrint(
+        '[API] response (${response.statusCode}) ${response.requestOptions.path}',
+      );
       debugPrint('[API] body: ${response.data}');
     }
     handler.next(response);
   }
-  
+
   Future<void> _onError(
     DioException err,
     ErrorInterceptorHandler handler,
@@ -67,12 +69,14 @@ class ApiClient {
       onUnauthorized?.call();
     }
     if (kDebugMode) {
-      debugPrint('[API] error (${err.response?.statusCode}) ${err.requestOptions.path}');
+      debugPrint(
+        '[API] error (${err.response?.statusCode}) ${err.requestOptions.path}',
+      );
       debugPrint('[API] error body: ${err.response?.data}');
     }
     return handler.next(err);
   }
-  
+
   // Generic GET request
   Future<dynamic> get(String endpoint) async {
     try {
@@ -82,7 +86,24 @@ class ApiClient {
       _handleDioError(e);
     }
   }
-  
+
+  Future<List<int>> getBytes(
+    String endpoint, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        endpoint,
+        queryParameters: queryParameters,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return response.data ?? <int>[];
+    } on DioException catch (e) {
+      _handleDioError(e);
+      return <int>[];
+    }
+  }
+
   // Generic POST request
   Future<dynamic> post(String endpoint, {dynamic data}) async {
     try {
@@ -92,7 +113,7 @@ class ApiClient {
       _handleDioError(e);
     }
   }
-  
+
   // Generic PUT request
   Future<dynamic> put(String endpoint, {dynamic data}) async {
     try {
@@ -102,7 +123,7 @@ class ApiClient {
       _handleDioError(e);
     }
   }
-  
+
   // Generic DELETE request
   Future<dynamic> delete(String endpoint) async {
     try {
@@ -112,7 +133,7 @@ class ApiClient {
       _handleDioError(e);
     }
   }
-  
+
   void _handleDioError(DioException error) {
     if (error.response != null) {
       final dynamic responseData = error.response?.data;
@@ -141,17 +162,17 @@ class ApiClient {
       throw ApiException(message: 'No internet connection');
     }
   }
-  
+
   // Store token securely
   Future<void> saveToken(String token) async {
     await _secureStorage.write(key: AppConstants.tokenKey, value: token);
   }
-  
+
   // Clear token
   Future<void> clearToken() async {
     await _secureStorage.delete(key: AppConstants.tokenKey);
   }
-  
+
   // Get token
   Future<String?> getToken() async {
     return await _secureStorage.read(key: AppConstants.tokenKey);
@@ -161,9 +182,10 @@ class ApiClient {
 class ApiException implements Exception {
   final String message;
   final int? statusCode;
-  
+
   ApiException({required this.message, this.statusCode});
-  
+
   @override
-  String toString() => 'ApiException: $message${statusCode != null ? ' (Status: $statusCode)' : ''}';
+  String toString() =>
+      'ApiException: $message${statusCode != null ? ' (Status: $statusCode)' : ''}';
 }

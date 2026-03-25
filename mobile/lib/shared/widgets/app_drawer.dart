@@ -93,24 +93,17 @@ class AppDrawer extends StatelessWidget {
           drawerItem(
             icon: Icons.email_outlined,
             label: 'Email Sync',
-            route: AppConstants.assetsRoute,
-            onTap: () {
-              Navigator.pushNamed(context, AppConstants.assetsRoute);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Email Sync flow coming soon')),
-              );
-            },
+            route: AppConstants.emailIntegrationRoute,
+          ),
+          drawerItem(
+            icon: Icons.mark_email_read_outlined,
+            label: 'Email Scan',
+            route: AppConstants.emailScanRoute,
           ),
           drawerItem(
             icon: Icons.visibility_outlined,
             label: 'Suggestions',
-            route: AppConstants.assetsRoute,
-            onTap: () {
-              Navigator.pushNamed(context, AppConstants.assetsRoute);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Suggestions view coming soon')),
-              );
-            },
+            route: AppConstants.suggestionsRoute,
           ),
           drawerItem(
             icon: Icons.person_outline,

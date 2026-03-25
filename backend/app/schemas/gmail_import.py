@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -13,6 +14,7 @@ class GmailConnectResponse(BaseModel):
 
 class GmailConnectRequest(BaseModel):
     email: str | None = Field(default=None, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    source: Literal["web", "mobile"] = "web"
 
 
 class GmailConnectionStatus(BaseModel):
