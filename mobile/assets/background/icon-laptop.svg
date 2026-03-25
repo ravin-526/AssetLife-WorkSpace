@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Laptop Icon -->
+  <rect x="20" y="40" width="160" height="100" rx="8" stroke="currentColor" stroke-width="8"/>
+  <rect x="40" y="50" width="120" height="70" rx="4" stroke="currentColor" stroke-width="4"/>
+  <path d="M 50 120 L 150 120 M 70 120 L 70 135 M 130 120 L 130 135" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+</svg>

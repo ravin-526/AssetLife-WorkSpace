@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" stroke="#374151" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Body -->
+  <rect x="10" y="8" width="80" height="84" rx="6"/>
+  <!-- Control panel bar -->
+  <line x1="10" y1="28" x2="90" y2="28"/>
+  <!-- Control dots -->
+  <circle cx="26" cy="18" r="4" fill="#374151"/>
+  <circle cx="42" cy="18" r="3" stroke="#374151" stroke-width="2.5"/>
+  <!-- Main drum circle -->
+  <circle cx="50" cy="62" r="24"/>
+  <!-- Inner drum -->
+  <circle cx="50" cy="62" r="16" fill="#e5e7eb" stroke="#374151" stroke-width="2"/>
+  <!-- Drum porthole -->
+  <circle cx="50" cy="62" r="6" fill="white" stroke="#374151" stroke-width="2.5"/>
+</svg>

@@ -1,8 +1,8 @@
 # AssetLife Technical Summary
 
-Last updated: 21 March 2026
+Last updated: 25 March 2026
 
-This document is the authoritative technical reference for the current repository state. It is based on direct inspection of backend, webapp, and mobile modules.
+This document is the authoritative technical reference for the current repository state. It is based on direct inspection of backend, webapp, and mobile modules. All major components, APIs, database models, and integration points are documented below.
 
 ## 1. Project Overview
 
@@ -94,10 +94,13 @@ Mobile:
 
 ## 3. Backend Architecture
 
+## 3. Backend Architecture
+
 ### Framework and Runtime
-- FastAPI application in `main.py`.
-- Startup:
-  - connect Mongo
+- FastAPI application in `main.py` (async ASGI framework).
+- Uvicorn ASGI server (configured via `python-dotenv` and `app/core/config.py`).
+- Startup hooks:
+  - Connect to MongoDB
   - ensure indexes
   - ensure default status master rows
 - Shutdown:
@@ -505,15 +508,27 @@ All backend routes are currently mounted in `main.py`.
 #### GET `/api/reminders`
 - Purpose: list reminders.
 - Auth required: Yes.
+- Response fields include `type` (either `"asset"` or `"custom"`).
 
 #### POST `/api/reminders`
 - Purpose: create reminder.
 - Auth required: Yes.
 - Required fields: `title`, `reminder_date`.
+- Optional fields: `asset_id`, `asset_name`, `reminder_type`, `status`, `notes`.
+- Response: includes `type` field computed from presence of `asset_id`.
+- Business rules:
+  - `type` is automatically computed: `"asset"` if `asset_id` provided, `"custom"` otherwise
+  - `asset_id` is normalized (whitespace trimmed, empty values become null)
+  - `asset_name` is only stored if `asset_id` is present
 
 #### PUT `/api/reminders/{reminder_id}`
 - Purpose: update reminder fields.
 - Auth required: Yes.
+- Allowed fields: `title`, `asset_id`, `asset_name`, `reminder_date`, `reminder_type`, `status`, `notes`.
+- Business rules:
+  - `type` field is recomputed on update based on new `asset_id`
+  - if `asset_id` is cleared, `asset_name` is also cleared
+  - 404 if reminder not found or doesn't belong to current user
 
 #### DELETE `/api/reminders/{reminder_id}`
 - Purpose: delete reminder.
@@ -653,10 +668,22 @@ Purpose:
 
 Key fields:
 - `user_id`
-- `asset_id`, `asset_name`
-- `title`, `reminder_date`
-- `reminder_type`, `status`, `notes`
+- `asset_id` (optional; nullable; normalized to clean string or null)
+- `asset_name` (optional; only present if asset_id is set)
+- `title`
+- `type` (reminder scope: `"asset"` or `"custom"` - automatically resolved from asset_id presence)
+- `reminder_date`
+- `reminder_type` (`"warranty"`, `"service"`, `"custom"`)
+- `status` (`"active"`, `"completed"`, `"snoozed"`)
+- `notes` (optional)
 - timestamps
+
+Business rules:
+- `type="asset"` when `asset_id` is present and non-empty
+- `type="custom"` when `asset_id` is null/empty
+- asset_id is normalized (whitespace trimmed, empty strings converted to null)
+- asset_name automatically cleared if asset_id is cleared
+- on update, type is recomputed based on new asset_id value
 
 Indexes:
 - compound `(user_id, reminder_date)`
@@ -760,49 +787,264 @@ Retrieve:
 - React + TypeScript SPA.
 - Route protection via `PrivateRoute` and Zustand token state.
 
-### Folder Responsibilities
-- `pages/`: route-level screens.
-- `components/`: shared UI shells/widgets.
-- `services/`: HTTP/API layer and typed contracts.
-- `store/`: auth state and persistence.
-- `hooks/`: reusable behavior (`useAutoDismissMessage`).
-- `utils/`: lifecycle/status helper calculations.
+### UI Framework and Styling Approach
+- Material-UI (MUI v7) for component library and theming.
+- Emotion for CSS-in-JS styling.
+- PrimeFlex, PrimeIcons, PrimeReact for additional UI components (partial integration).
+- Recharts for dashboard charts and data visualization.
+- Global theme system with light/dark mode support via MUI ThemeProvider.
+- Responsive design with CSS media queries for mobile/tablet/desktop breakpoints (480px, 768px, 1024px).
+- Glass-morphism effect support (backdrop blur) with fallback for browsers without support.
+- Managed font scaling (16px base on desktop, responsive down to 13px on mobile).
+- Card-based layouts with smooth animations (fadeInUp).
+
+### Component Structure
+- `AdminLayout.tsx`: main app shell for authenticated routes (includes header with theme toggle, navigation, sidebar).
+- `AuthLayout.tsx`: layout for public routes (login, register, legal pages).
+- `PrivateRoute.tsx`: route guard enforcing authentication and token validation.
+- `components/modules/`: feature-specific component groupings.
+- Modal components for asset management, suggestion review, document upload.
+- OTP input component with masking and validation.
 
 ### Key Pages
-- `IndividualLogin`: OTP send/verify.
-- `IndividualRegister`: register + OTP verify.
-- `Dashboard`: aggregates assets/reminders/suggestions for metrics/charts.
-- `Assets`: list/filter/edit assets and supporting document operations.
-- `AddAsset`: multi-mode onboarding (email sync, invoice upload, excel upload, qr/manual entry UI).
-- `AssetSuggestions`: review and confirm parsed suggestions.
-- `EmailIntegrations`: Gmail connect/disconnect and sync trigger.
-- `EmailScans`: scan history and suggestion actions.
-- `Reminders`: reminder CRUD.
-- `Profile`: profile fetch/update with role-aware endpoint behavior.
-- `Settings`: includes temporary reset-test-data action.
-- `Reports`, `Users`: currently stub pages.
+- `IndividualLogin` (`/login`): OTP send/verify flow for individual user authentication.
+- `IndividualRegister` (`/register`): User registration form + OTP-based verification for new users.
+- `Dashboard` (`/dashboard`): Metrics dashboard with asset counts by status, reminder windows, suggestion count.
+- `Assets` (`/assets`): Searchable/filterable asset list/grid view with CRUD operations.
+- `AssetView` (`/assets/:assetId`): Detailed view of a single asset including supporting documents and lifecycle data.
+- `AddAsset` (`/assets/add`): Multi-mode asset onboarding (email sync, invoice upload, excel bulk upload, manual QR/entry).
+- `AssetSuggestions` (`/assets/suggestions`): Review and confirm/reject parsed email suggestions with attachment viewing.
+- `EmailIntegrations` (`/integrations/email`): Gmail OAuth connect/disconnect and settings management.
+- `EmailScans` (`/emails`): Gmail sync history and suggestion actions.
+- `Reminders` (`/reminders`): CRUD management for both custom reminders and asset-linked lifecycle reminders.
+- `Profile` (`/profile`): User profile view/update with role-aware endpoint behavior.
+- `Settings` (`/settings`): User preferences including theme selection and temporary test data reset action.
+- `Reports` (`/reports`): Currently placeholder stub page.
+- `Users` (`/users`): Currently placeholder stub page (intended for admin user management).
+- **Legal Pages** (under `/legal/`, accessible from auth layout):
+  - `PrivacyPolicy` (`/privacy-policy`)
+  - `Terms` (`/terms`)
+  - `Disclaimer` (`/disclaimer`)
+  - `CookiePolicy` (`/cookies`)
+  - `About` (`/about`)
+  - `Contact` (`/contact`)
+  - `Help` (`/help`)
 
 ### State Management
-- Zustand store for token/user.
-- Token keys:
-  - `access_token` (current)
+- Zustand store (`useUserStore`) for auth token, user profile, and theme preference.
+- Token keys supported:
+  - `access_token` (current standard)
   - `jwt_token` (legacy migration support)
+- Token persisted in localStorage.
+- Theme preference: `light` or `dark`; stored both in Zustand and synced to backend via `/individual/update?user_id={id}` endpoint (persisted in user profile).
+- Theme toggle available in app header (AdminLayout) on protected routes.
 
 ### API Integration Approach
-- `services/api.ts` configures base URL and interceptors.
-- Request interceptor adds auth header from store/localStorage.
-- Response interceptor auto-logout + redirect on 401.
-- Blob endpoints handled for invoice/document download.
+- Centralized Axios instance: `services/api.ts`
+  - Base URL from environment variable `REACT_APP_API_BASE_URL` (default `http://192.168.0.14:8000`)
+  - Default content-type: `application/json`
+  - Request interceptor: injects `Authorization: Bearer <token>` header from Zustand store; falls back to `access_token` or `jwt_token` from localStorage
+  - Response interceptor: auto-redirects to `/login` and logs out on 401 Unauthorized
+  - Blob endpoints (document/invoice downloads) handled via `api.get(..., { responseType: "blob" })`
+  - Error responses logged before throwing
 
-### Form Handling
-- Form state local to pages/components.
-- Validation mostly client-side in page handlers (email/mobile/required fields).
-- OTP screens include cooldown timer and user feedback.
+### Form Handling and Validation
+- Form state management: mostly local to pages/components (useState).
+- Client-side validations:
+  - Email regex pattern validation
+  - Mobile number format (digits only, length constraints)
+  - OTP input length and type constraints
+  - Required field checks
+  - Category/subcategory dropdown dependency
+- Server-side validation:
+  - Pydantic schemas enforce request contract
+  - Backend validates business rules (e.g., duplicate asset detection, lifecycle date ranges)
+  - 400 Bad Request for validation failures with detail messages
+- OTP flow includes UI cooldown timer to prevent rapid resends.
 
 ### Navigation/Routing
 - Active routes defined in `App.tsx`.
 - Root redirects to `/dashboard`.
 - login/register public; core screens protected.
+
+## 8.1 Mobile Application Architecture (Flutter Android)
+
+### Overview
+AssetLife Mobile is a Flutter-based Android application providing asset lifecycle management on mobile devices. Built with Phase 1 focus on authentication, dashboard, assets, and reminders.
+
+### Technology Stack
+- **Framework**: Flutter 3.x with Dart
+- **State Management**: Provider pattern
+- **HTTP Client**: Dio with interceptors
+- **Routing**: Go Router for navigation
+- **Secure Storage**: flutter_secure_storage for token persistence
+- **Date/Time**: intl package for formatting
+
+### Project Structure
+```
+lib/
+├── core/
+│   ├── api/               # Dio API client with auth interceptors
+│   ├── constants/         # App-wide constants (URLs, keys, routes)
+│   ├── routing/           # Go Router configuration & route definitions
+│   ├── theme/             # Light/Dark theme configuration
+│   └── utils/             # Utilities (TBD)
+├── features/
+│   ├── auth/
+│   │   ├── providers/     # AuthProvider (login state management)
+│   │   └── screens/       # LoginScreen, OtpScreen
+│   ├── dashboard/
+│   │   └── screens/       # DashboardScreen (metrics & quick actions)
+│   ├── assets/
+│   │   ├── providers/     # AssetProvider (list, CRUD state)
+│   │   └── screens/       # AssetsScreen (asset list & filtering)
+│   └── reminders/
+│       ├── providers/     # ReminderProvider (reminder state)
+│       └── screens/       # RemindersScreen (reminder list & management)
+├── shared/
+│   ├── models/            # Data models (User, Asset, Reminder)
+│   ├── services/          # API service wrappers (AuthService, AssetService, ReminderService)
+│   └── widgets/           # Reusable UI components (AppCard, AppTextField, PrimaryButton, StatusBadge, EmptyState)
+└── main.dart              # App entry point with Provider setup
+
+android/
+├── app/                   # Android app module
+└── gradle/                # Build configuration
+```
+
+### Theme & UI
+- **Material Design 3**: Leverages latest Material Design principles
+- **Light & Dark Themes**: Full theme support with:
+  - Primary color: Indigo (#6366F1)
+  - Secondary color: Purple (#8B5CF6)
+  - Accent color: Orange (#F97316)
+  - Status colors: Green (success), Red (error), Blue (info), Orange (warning)
+- **Responsive Design**: Breakpoints & flexible layouts for various device sizes
+- **Reusable Widgets**:
+  - `AppCard`: Card with optional tap handler
+  - `AppTextField`: Input field with validation
+  - `PrimaryButton`: Primary CTA button with loading state
+  - `StatusBadge`: Color-coded status display
+  - `EmptyState`: Placeholder for empty lists
+
+### API Integration
+- **Base URL**: `http://192.168.0.14:8000` (configurable via `AppConstants`)
+- **Auth Flow**:
+  1. Request interceptor injects `Authorization: Bearer <token>` from secure storage
+  2. Response interceptor handles 401 → logout + redirect to login
+  3. Tokens stored securely via `flutter_secure_storage`
+- **Error Handling**: Custom `ApiException` with detailed error messages
+
+### State Management
+- **Provider Pattern**: ChangeNotifierProvider for reactive updates
+- **Auth Provider**: Manages login, OTP verification, profile, logout
+- **Asset Provider**: Manages asset list, CRUD, filtering
+- **Reminder Provider**: Manages reminder list, CRUD, mark complete
+- **Providers Injected**: Via `MultiProvider` in main.dart startup
+
+### Routing Configuration (Go Router)
+- **Routes**:
+  - `/login`: Login screen (public)
+  - `/otp`: OTP verification (public, with mobile extra parameter)
+  - `/dashboard`: Dashboard (private)
+  - `/assets`: Asset list (private)
+  - `/reminders`: Reminder list (private)
+- **Auth Redirect**: Automatically redirects unauthenticated users to `/login`
+- **Authenticated Check**: Verifies token existence on app startup
+
+### Pages & Screens
+
+#### LoginScreen (`/login`)
+- Mobile number input with validation
+- Send OTP button with loading state
+- Navigates to OTP screen on success
+
+#### OtpScreen (`/otp`)
+- OTP input (6-digit)
+- Resend timer (5-minute countdown)
+- Verify OTP button
+- Back navigation to login
+
+#### DashboardScreen (`/dashboard`)
+- Metrics cards: Total Assets, Active Assets, Reminders, Status
+- Quick action buttons: Assets & Reminders navigation
+- Pull-to-refresh functionality
+
+#### AssetsScreen (`/assets`)
+- Asset list with card-based layout
+- Status-based filtering chips (All, Active, In Warranty)
+- Display: Name, Category, Status, Vendor, Price
+- FAB for adding new assets (Phase 2)
+- Pull-to-refresh, empty state handling
+
+#### RemindersScreen (`/reminders`)
+- Active reminders list
+- Display: Title, Asset Name, Date, Type (Warranty/Service/Custom)
+- Reminder type badges (color-coded)
+- Mark as completed via checkbox
+- Swipe-to-delete with confirmation
+- FAB for creating reminders (Phase 2)
+- Pull-to-refresh, empty state handling
+
+### Secure Token Management
+- **Storage**: `flutter_secure_storage` (platform-specific)
+- **Key**: `access_token` in secure storage
+- **Lifecycle**:
+  - Stored after successful OTP verification
+  - Retrieved on app startup to check auth status
+  - Injected in all API requests via interceptor
+  - Cleared on logout
+
+### Error Handling
+- **API Layer**: `ApiException` with message + status code
+- **UI Layer**: SnackBar notifications for user feedback
+- **401 Handling**: Auto-logout + redirect to login (configured in interceptor)
+
+### Dependency Injection
+- **Services**: Instantiated in main.dart and provided to entire app
+- **Providers**: Created with service dependencies
+- **Lifecycle**: Global & persistent throughout app lifetime
+
+### Phase 1 Completion Status
+✅ Project initialization with Flutter & Android support
+✅ Clean architecture with separation of concerns
+✅ Theme system (light/dark) matching web app
+✅ API client with auth interceptors & secure token storage
+✅ Routing with protected screens
+✅ Auth flow: Login → OTP → Dashboard
+✅ Dashboard with metrics
+✅ Assets list with filtering
+✅ Reminders list with status management
+✅ Reusable UI components library
+✅ State management with Provider pattern
+⚠️ Ready for emulator testing
+
+### Phase 2 Planned Features
+- Add/Edit Asset screens
+- Add/Edit Reminder screens
+- Asset detail view with document management
+- Category/Subcategory selection UI
+- Lifecycle date picker & validation
+- Email sync & suggestions on mobile
+- Offline sync capabilities
+- Push notifications for reminders
+- Dark mode preference persistence
+
+### Development Notes
+- **Testing**: Run `flutter test` or use physical/emulator via Android Studio
+- **Build**: `flutter build apk` for release APK
+- **Hot Reload**: `flutter run` during development
+- **Code Generation**: Some Future enhancements may require `build_runner`
+- **Analyzer**: `flutter analyze` to check code quality (info-level warnings acceptable)
+- **Dependencies**: Managed via `pubspec.yaml`; update with `flutter pub upgrade`
+
+### Known Limitations (Phase 1)
+- No email sync or suggestion preview on mobile yet
+- No document upload/management screens yet
+- No category master selector UI (phase 2)
+- No offline capabilities yet
+- Metrics are read-only (no add flows in Phase 1 screens)
+- Theme preference not persisted across sessions yet
 
 ## 8. Application Navigation (User Flow)
 
@@ -998,9 +1240,37 @@ Note:
 
 ### Important Design Decisions
 - Asset status source of truth moved to backend, not frontend-only computation.
-- Lifecycle data supports multiple key naming patterns to tolerate heterogeneous payloads.
+- Lifecycle data supports multiple key naming patterns to tolerate heterogeneous payloads (e.g., `endDate` vs `end_date`).
 - Suggestion pipeline designed for incremental/manual confirmation rather than auto-create.
 - Category and status master data are centrally managed in backend collections.
+- Reminder type field (`asset` vs `custom`) is automatically computed by backend based on presence of asset_id, ensuring consistent state.
+
+### Development Workflow Notes
+
+**Attachment and Invoice Handling:**
+- Email Sync "Add Asset from suggestion" uses `POST /api/assets` with `suggestion_id` query parameter (not only `/api/assets/suggestions/{id}/confirm`)
+- Attachment propagation fixes must cover BOTH:
+  1. `/api/assets/suggestions/{suggestion_id}/confirm` endpoint
+  2. Direct asset creation flow in `POST /api/assets` with `suggestion_id`
+- Both paths must properly handle file attachment storage and path persistence
+
+**Logging Best Practices:**
+- Avoid using reserved LogRecord keys (e.g., `filename`, `levelname`) in logger `extra` dictionary
+- Reserved keys can raise `KeyError` during email scan pipeline execution and silently prevent suggestion creation
+- Use custom key names for application-specific metadata
+
+**Build and Artifact Management:**
+- Running `npm build` generates artifacts under `webapp/node_modules/.cache/babel-loader`
+- Treat cache directories as generated artifacts; do not commit them
+- Use `.gitignore` patterns to prevent accidental commits of build cache
+
+**API Response Payload Variations:**
+- Category/subcategory endpoints may return either `id` or `_id` from backend; frontend should accept both
+- Asset lifecycle data can arrive as either JSON strings or objects; always parse safely with try-catch
+- Warranty/Insurance/Service data support multiple field naming patterns:
+  - Warranty: `warranty.available`, `warranty.end_date` or `warranty.endDate`
+  - Insurance: `insurance.available`, `insurance.end_date`/`insurance.endDate`/`insurance.expiry_date`
+  - Service: `service.available`/`service.required`, `service.next_service_date` or `service.nextServiceDate`
 
 ### Areas Requiring Caution Before Modification
 - `assets.py`: large, high-complexity module handling template generation, lifecycle logic, reminders, and CRUD.
