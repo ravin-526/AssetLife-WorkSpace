@@ -65,11 +65,28 @@ class AppDrawer extends StatelessWidget {
                   fit: BoxFit.contain,
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  'Asset Life',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: headerText,
-                    fontWeight: FontWeight.w700,
+                RichText(
+                  text: TextSpan(
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Roboto',
+                    ),
+                    children: [
+                      TextSpan(
+                        text: 'Asset',
+                        style: TextStyle(
+                          color: Color(0xFF2C3E50),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      TextSpan(
+                        text: 'Life',
+                        style: TextStyle(
+                          color: Color(0xFF17A2B8),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

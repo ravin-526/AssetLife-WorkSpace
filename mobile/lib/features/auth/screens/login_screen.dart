@@ -146,10 +146,37 @@ class _LoginScreenState extends State<LoginScreen> {
               filterQuality: FilterQuality.high,
             ),
             const SizedBox(height: 18),
-            Text(
-              'Welcome to Asset Life',
+            RichText(
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge,
+              text: TextSpan(
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontFamily: 'Roboto',
+                  fontWeight: FontWeight.w700,
+                ),
+                children: [
+                  TextSpan(
+                    text: 'Welcome to ',
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.titleLarge?.color,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'Asset',
+                    style: TextStyle(
+                      color: Color(0xFF2C3E50),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'Life',
+                    style: TextStyle(
+                      color: Color(0xFF17A2B8),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 6),
             Text(
