@@ -1,32 +1,33 @@
+
 # AssetLife Technical Summary
 
-Last updated: 25 March 2026
+Last updated: 26 March 2026
 
-This document is the authoritative technical reference for the current repository state. It is based on direct inspection of backend, webapp, and mobile modules. All major components, APIs, database models, and integration points are documented below.
+This document is the authoritative technical reference for the AssetLife repository. It provides a comprehensive overview of the system architecture, backend and frontend modules, API endpoints, database design, business logic, integrations, configuration, and security. Use this as the primary onboarding and reference guide for all future development.
 
 ## 1. Project Overview
 
 ### Purpose
-AssetLife is an asset lifecycle management platform centered on individual users. It tracks owned assets and lifecycle events (warranty, insurance, service), supports email-driven asset suggestion workflows, document attachments, reminders, and category/status master data.
+AssetLife is an asset lifecycle management platform for individual users. It enables users to track their assets, manage lifecycle events (warranty, insurance, service), receive reminders, and leverage email-driven asset suggestion workflows. The system supports document attachments, category/status master data, and integrates with Gmail for automated asset detection.
 
 ### Core Features Implemented
-- Individual registration and OTP login.
-- Admin/user role model and admin user CRUD endpoints.
-- Asset CRUD with lifecycle metadata.
-- Auto status computation based on lifecycle and inactive state.
-- Reminder CRUD plus auto-created lifecycle reminders on asset create/update.
-- Gmail OAuth integration and mailbox sync.
-- Email scan pipeline that detects invoice emails and creates asset suggestions.
-- Suggestion parse/confirm/reject flow.
-- Invoice and document file storage + streaming endpoints.
-- Excel template download and Excel upload validation/preview pipeline.
-- Category/subcategory master data APIs.
-- Status master API with seeded defaults.
-- React web application with protected routes, dashboard, assets workflows, reminders, profile/settings screens.
+- Individual registration and OTP login
+- Admin/user role model and admin user CRUD endpoints
+- Asset CRUD with lifecycle metadata
+- Auto status computation based on lifecycle and inactive state
+- Reminder CRUD plus auto-created lifecycle reminders on asset create/update
+- Gmail OAuth integration and mailbox sync
+- Email scan pipeline that detects invoice emails and creates asset suggestions
+- Suggestion parse/confirm/reject flow
+- Invoice and document file storage + streaming endpoints
+- Excel template download and Excel upload validation/preview pipeline
+- Category/subcategory master data APIs
+- Status master API with seeded defaults
+- React web application with protected routes, dashboard, assets workflows, reminders, profile/settings screens
 
 ### Tech Stack
 
-Backend:
+**Backend:**
 - Python + FastAPI
 - Motor (MongoDB async driver)
 - Pydantic / pydantic-settings
@@ -37,7 +38,7 @@ Backend:
 - openpyxl (Excel)
 - PyPDF2 + Pillow + pytesseract (invoice parsing)
 
-Frontend:
+**Frontend:**
 - React 18 + TypeScript
 - react-router-dom v6
 - MUI + Emotion
@@ -46,15 +47,17 @@ Frontend:
 - Recharts
 - PrimeFlex/PrimeIcons/PrimeReact (partial usage)
 
-Database:
+**Database:**
 - MongoDB (`assetlife` by default)
 
-Integrations:
+**Integrations:**
 - Gmail OAuth2 + Gmail API (`gmail.readonly`)
 - Local file storage for invoice and document binaries
 
-Mobile:
+**Mobile:**
 - Flutter folder scaffold exists but is currently empty/inactive.
+
+...existing code...
 
 ## 2. Project Structure
 
