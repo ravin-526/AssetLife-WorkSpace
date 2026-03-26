@@ -70,7 +70,9 @@ class _LoginScreenState extends State<LoginScreen> {
         _isMobileFocused = _mobileFocusNode.hasFocus;
       });
     });
+    // Auto-focus mobile number field on first load
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mobileFocusNode.requestFocus();
       final authProvider = context.read<AuthProvider>();
       if (authProvider.isAuthenticated && mounted) {
         Navigator.pushReplacementNamed(context, AppConstants.dashboardRoute);

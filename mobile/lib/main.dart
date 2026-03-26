@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:assetlife_mobile/features/assets/screens/assets_screen.dart';
@@ -8,12 +5,7 @@ import 'package:assetlife_mobile/features/auth/screens/login_screen.dart';
 import 'package:assetlife_mobile/features/auth/screens/otp_screen.dart';
 import 'package:assetlife_mobile/features/auth/screens/register_screen.dart';
 import 'package:assetlife_mobile/features/dashboard/screens/dashboard_screen.dart';
-import 'package:assetlife_mobile/features/email/screens/email_integration_screen.dart';
-import 'package:assetlife_mobile/features/email/screens/email_scan_screen.dart';
 import 'package:assetlife_mobile/features/reminders/screens/reminders_screen.dart';
-import 'package:assetlife_mobile/features/suggestions/screens/asset_suggestions_screen.dart';
-import 'package:assetlife_mobile/features/suggestions/screens/suggestion_attachment_preview_screen.dart';
-import 'package:assetlife_mobile/features/suggestions/screens/suggestion_detail_screen.dart';
 import 'package:assetlife_mobile/core/api/api_client.dart';
 import 'package:assetlife_mobile/core/constants/app_constants.dart';
 import 'package:assetlife_mobile/core/routing/app_navigator.dart';
@@ -59,61 +51,8 @@ void main() async {
   );
 }
 
-class AssetLifeApp extends StatefulWidget {
+class AssetLifeApp extends StatelessWidget {
   const AssetLifeApp({super.key});
-
-  @override
-  State<AssetLifeApp> createState() => _AssetLifeAppState();
-}
-
-class _AssetLifeAppState extends State<AssetLifeApp> {
-  late final AppLinks _appLinks;
-  StreamSubscription<Uri?>? _deepLinkSub;
-
-  @override
-  void initState() {
-    super.initState();
-    _initDeepLinks();
-  }
-
-  Future<void> _initDeepLinks() async {
-    _appLinks = AppLinks();
-
-    try {
-      final initialUri = await _appLinks.getInitialAppLink();
-      _handleDeepLink(initialUri);
-    } catch (_) {
-      // Ignore malformed initial links.
-    }
-
-    _deepLinkSub = _appLinks.uriLinkStream.listen(
-      _handleDeepLink,
-      onError: (_) {
-        // Ignore stream parsing errors.
-      },
-    );
-  }
-
-  void _handleDeepLink(Uri? uri) {
-    if (uri == null) {
-      return;
-    }
-    if (uri.scheme != 'assetlife' || uri.host != 'oauth-callback') {
-      return;
-    }
-
-    final navigator = AppNavigator.navigatorKey.currentState;
-    if (navigator == null) {
-      return;
-    }
-    navigator.pushNamed(AppConstants.emailIntegrationRoute);
-  }
-
-  @override
-  void dispose() {
-    _deepLinkSub?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,28 +83,6 @@ class _AssetLifeAppState extends State<AssetLifeApp> {
             const _AuthGuard(child: AssetsScreen()),
         AppConstants.remindersRoute: (context) =>
             const _AuthGuard(child: RemindersScreen()),
-        AppConstants.emailIntegrationRoute: (context) =>
-            const _AuthGuard(child: EmailIntegrationScreen()),
-        AppConstants.emailScanRoute: (context) =>
-            const _AuthGuard(child: EmailScanScreen()),
-        AppConstants.suggestionsRoute: (context) =>
-            const _AuthGuard(child: AssetSuggestionsScreen()),
-        AppConstants.suggestionDetailRoute: (context) {
-          final args = ModalRoute.of(context)?.settings.arguments;
-          if (args is SuggestionDetailArgs) {
-            return _AuthGuard(child: SuggestionDetailScreen(args: args));
-          }
-          return const _AuthGuard(child: AssetSuggestionsScreen());
-        },
-        AppConstants.suggestionAttachmentPreviewRoute: (context) {
-          final args = ModalRoute.of(context)?.settings.arguments;
-          if (args is SuggestionAttachmentPreviewArgs) {
-            return _AuthGuard(
-              child: SuggestionAttachmentPreviewScreen(args: args),
-            );
-          }
-          return const _AuthGuard(child: AssetSuggestionsScreen());
-        },
       },
     );
   }
