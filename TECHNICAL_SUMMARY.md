@@ -1,63 +1,222 @@
 
 # AssetLife Technical Summary
 
-Last updated: 26 March 2026
 
-This document is the authoritative technical reference for the AssetLife repository. It provides a comprehensive overview of the system architecture, backend and frontend modules, API endpoints, database design, business logic, integrations, configuration, and security. Use this as the primary onboarding and reference guide for all future development.
+Last updated: 28 March 2026
+
+This document is the authoritative technical reference for the AssetLife repository. It provides a comprehensive, up-to-date overview of the system architecture, backend and frontend modules, API endpoints, database design, business logic, integrations, configuration, and security. Use this as the primary onboarding and reference guide for all future development. All sections are detailed to enable any developer or AI assistant to quickly understand and continue development without missing context.
+
 
 ## 1. Project Overview
 
 ### Purpose
-AssetLife is an asset lifecycle management platform for individual users. It enables users to track their assets, manage lifecycle events (warranty, insurance, service), receive reminders, and leverage email-driven asset suggestion workflows. The system supports document attachments, category/status master data, and integrates with Gmail for automated asset detection.
+AssetLife is a cross-platform asset lifecycle management system designed for individual users. It enables users to track, manage, and receive reminders for their assets (such as electronics, appliances, vehicles, etc.), covering warranty, insurance, and service events. The platform automates asset detection via Gmail integration, supports document uploads, and provides a modern web and mobile interface.
 
 ### Core Features Implemented
-- Individual registration and OTP login
-- Admin/user role model and admin user CRUD endpoints
-- Asset CRUD with lifecycle metadata
-- Auto status computation based on lifecycle and inactive state
-- Reminder CRUD plus auto-created lifecycle reminders on asset create/update
-- Gmail OAuth integration and mailbox sync
-- Email scan pipeline that detects invoice emails and creates asset suggestions
-- Suggestion parse/confirm/reject flow
-- Invoice and document file storage + streaming endpoints
-- Excel template download and Excel upload validation/preview pipeline
-- Category/subcategory master data APIs
-- Status master API with seeded defaults
-- React web application with protected routes, dashboard, assets workflows, reminders, profile/settings screens
+- Individual registration and OTP-based login
+- Admin/user role model with admin CRUD endpoints
+- Asset CRUD with lifecycle metadata and status computation
+- Automated reminders for asset lifecycle events
+- Gmail OAuth integration and mailbox sync for asset suggestion extraction
+- Email scan pipeline for invoice detection and asset suggestion creation
+- Suggestion parse/confirm/reject workflow
+- Invoice and document file storage with secure streaming endpoints
+- Excel template download and upload with validation/preview
+- Category/subcategory/status master data APIs
+- React web application with protected routes, dashboard, asset workflows, reminders, and profile/settings
+- Flutter mobile app (Phase 1: authentication, dashboard, asset/reminder list)
 
 ### Tech Stack
 
 **Backend:**
-- Python + FastAPI
-- Motor (MongoDB async driver)
+- Python 3.x, FastAPI (ASGI)
+- Motor (async MongoDB driver)
 - Pydantic / pydantic-settings
 - python-jose (JWT)
-- passlib[bcrypt]
-- cryptography (Fernet for encryption)
-- httpx
-- openpyxl (Excel)
-- PyPDF2 + Pillow + pytesseract (invoice parsing)
+- passlib[bcrypt] (password hashing)
+- cryptography (Fernet encryption)
+- httpx (HTTP client)
+- openpyxl (Excel processing)
+- PyPDF2, Pillow, pytesseract (PDF/OCR parsing)
 
 **Frontend:**
-- React 18 + TypeScript
+- React 18, TypeScript
 - react-router-dom v6
-- MUI + Emotion
-- Zustand
-- Axios
-- Recharts
-- PrimeFlex/PrimeIcons/PrimeReact (partial usage)
+- Material-UI (MUI) + Emotion
+- Zustand (state management)
+- Axios (API client)
+- Recharts (charts)
+- PrimeFlex/PrimeIcons/PrimeReact (partial)
 
 **Database:**
-- MongoDB (`assetlife` by default)
+- MongoDB (`assetlife` database)
 
 **Integrations:**
-- Gmail OAuth2 + Gmail API (`gmail.readonly`)
-- Local file storage for invoice and document binaries
+- Gmail OAuth2 + Gmail API (readonly)
+- Local file storage for invoices/documents
 
 **Mobile:**
-- Flutter folder scaffold exists but is currently empty/inactive.
+- Flutter 3.x (Android, iOS planned)
 
-...existing code...
+
+## 2. Project Structure
+
+### Top-Level Folders
+- `backend/`: FastAPI backend, MongoDB integration, business logic, file processing
+- `webapp/`: React TypeScript frontend
+- `mobile/`: Flutter mobile app (currently Phase 1, partial)
+- `PROJECT_RULES.md`: legacy rules snapshot
+- `TECHNICAL_SUMMARY.md`: canonical technical reference (this file)
+
+### Backend Structure
+- `app/main.py`: FastAPI app bootstrap, CORS, router registration, startup/shutdown
+- `app/core/`: config, JWT/security, crypto, exception framework, status master, logging
+- `app/db/`: Mongo manager, index bootstrapping
+- `app/models/`: role enum, user DB model
+- `app/routes/`: all API route modules
+- `app/services/`: OTP, user, Gmail, email scan, invoice parser, suggestion service
+- `app/schemas/`: request/response contracts
+- `uploads/`: stored invoices and documents
+
+### Webapp Structure
+- `src/index.tsx`: app entry
+- `src/App.tsx`: route tree and theme wrapper
+- `src/components/`: layout, private route, OTP input, modal components
+- `src/pages/`: main pages
+- `src/services/`: API client/service wrappers
+- `src/store/`: Zustand auth/user store
+- `src/utils/`: status/lifecycle helpers
+- `src/features/`: legacy components (not active)
+- `src/AppRoutes.tsx`: legacy router (not active)
+
+### Mobile Structure
+- `lib/`: core, features, shared (see section 8.1)
+- `android/`, `ios/`, `macos/`, `linux/`, `windows/`: platform scaffolding
+
+## 3. Backend Architecture
+
+### Framework and Runtime
+- FastAPI (ASGI) in `main.py`
+- Uvicorn server
+- Startup: MongoDB connect, index ensure, status master seed
+- Shutdown: Mongo disconnect
+- Health endpoint: `GET /health`
+
+### Main Modules and Services
+- Core: config, JWT, security, crypto, exceptions, status master
+- DB: Mongo manager, index creation
+- Services: user, OTP, Gmail, email scan, asset suggestion, invoice parser
+- Routes: auth, individual, user, assets, asset suggestions, email scans, Gmail integration, categories, statuses, reminders, testing
+
+### Middleware and Authentication
+- CORS: `allow_origins=["http://localhost:3000"]`, credentials true
+- Auth: HTTP Bearer JWT, claims: `sub`, `role`
+- Authorization: route-level role dependencies, ownership checks
+
+### Error Handling
+- Custom exceptions mapped to JSON
+- 500 fallback for unhandled errors
+- Route-specific HTTPException for details
+
+## 4. API Endpoints
+
+See detailed section in file for each route: path, method, purpose, payload, response, auth, business rules, validation.
+
+## 5. Database Design
+
+See detailed section in file for each collection/table: name, purpose, fields, types, required/optional, defaults, indexes, relationships, business/validation rules.
+
+## 6. Data Flow
+
+- Frontend → Backend → Database: UI triggers service, API call, backend validates/processes, MongoDB read/write, response normalized in frontend
+- Asset create/update/retrieve: duplicate checks, lifecycle enrichment, status compute, reminders, suggestion confirm, file/document handling
+- No background jobs; Gmail sync and parsing run inline
+
+## 7. Frontend Architecture
+
+- React + TypeScript SPA
+- MUI + Emotion for UI/theming
+- Zustand for state
+- Axios for API
+- Route protection via PrivateRoute
+- Responsive design, glass-morphism, card layouts
+- Key pages: login, register, dashboard, assets, asset view, add asset, suggestions, email integrations, email scans, reminders, profile, settings, reports, users, legal
+- State: token/user/theme in Zustand/localStorage
+- API: centralized Axios, error handling, blob support
+- Forms: local state, client/server validation, OTP cooldown
+- Navigation: App.tsx, root redirects, protected routes
+
+## 8. Application Navigation
+
+- Login/authentication: mobile, OTP, token, redirect
+- Registration: form, OTP, auto-login
+- Dashboard: metrics, assets, reminders, suggestions
+- Asset creation: multiple modes (email, excel, invoice, manual)
+- Asset listing/editing: search/filter, CRUD, docs
+- Settings/admin: profile, preferences, test data reset, users/reports (placeholders)
+
+## 8.1 Mobile Application Architecture (Flutter Android)
+
+- Flutter 3.x, Provider, Dio, Go Router, flutter_secure_storage
+- Core: API client, constants, routing, theme, utils
+- Features: auth, dashboard, assets, reminders
+- Shared: models, services, widgets
+- Theme: Material 3, light/dark, responsive
+- API: base URL, auth, error handling
+- State: Provider pattern
+- Routing: Go Router, auth redirect
+- Pages: login, OTP, dashboard, assets, reminders
+- Secure token management
+- Error handling: ApiException, SnackBar, 401 auto-logout
+- Dependency injection: services/providers
+- Phase 1: auth, dashboard, asset/reminder list (no add flows yet)
+- Phase 2: add/edit asset/reminder, detail, docs, category UI, offline, push notifications
+
+## 9. Business Logic
+
+- Asset creation: category/subcategory required, duplicate prevention, source normalization
+- Category/subcategory: master data, dedupe, validation
+- Document handling: invoices/docs in uploads, file streaming, deletion
+- Reminders: manual CRUD, auto from lifecycle, sync on update
+- Notifications: not yet implemented
+- Validation: OTP, Excel, status, etc.
+
+## 10. External Integrations
+
+- Gmail OAuth2, Gmail API (readonly)
+- Email parsing, attachment scoring, invoice parsing
+- File storage: local filesystem
+- Third-party: FX rate API for invoice parser
+
+## 11. Environment Configuration
+
+- Backend: all env vars in config.py (see section), Gmail/Google vars, local uploads, debug/dev differences
+- Frontend: REACT_APP_API_BASE_URL
+- Dev vs prod: OTP debug, local Mongo/uploads, test reset endpoint
+
+## 12. Security Implementation
+
+- Auth: JWT bearer, claims, 401 handling
+- Authorization: role-based, ownership
+- Data protection: Fernet encryption, bcrypt, mobile hash
+- API: input validation, ObjectId parsing, exception handling
+- Gaps: OTP in-memory, debug exposure, localStorage token, CORS, test endpoint
+
+## 13. Current Limitations / TODOs
+
+- Placeholder pages (users, reports), mobile partial, legacy code
+- No background jobs, notification dispatcher, cloud storage
+- Endpoint contract inconsistencies, mixed env var names
+- Temporary test reset endpoint/UI
+- TODO/legacy code signals in repo
+
+## 14. Development Notes
+
+- Design: backend status source of truth, lifecycle field tolerance, suggestion pipeline, master data, reminder type auto-compute
+- Workflow: attachment handling, logging best practices, build/artifact management, API response variations
+- Caution: assets.py complexity, Gmail/token logic, profile branching, encryption helpers
+- Assumptions: single backend, local uploads, Mongo normalization, Gmail callback domain
+- Next steps: remove test endpoint, unify env vars, add background jobs, notification layer, prune legacy, add contract tests
 
 ## 2. Project Structure
 
