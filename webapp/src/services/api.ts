@@ -79,6 +79,10 @@ api.interceptors.request.use(
       config.headers.Authorization = authHeader.Authorization;
     }
 
+    // Debug: Log token used in API requests
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
+    console.log("API Request Token:", token);
+
     return config;
   },
   (error: AxiosError) => Promise.reject(error)

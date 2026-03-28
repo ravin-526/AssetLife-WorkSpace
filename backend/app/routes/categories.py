@@ -1,3 +1,124 @@
+
+
+from datetime import datetime, timezone
+from typing import Any
+from fastapi import APIRouter, Depends, status
+from app.core.security import get_current_user
+from app.db.mongo import get_db
+
+router = APIRouter(prefix="/api/categories", tags=["Categories"])
+
+# Business-approved category and subcategory map
+CATEGORY_MAP = {
+    "Electronics": [
+        "Mobile Phones", "Laptops", "Tablets", "Desktop PCs", "Monitors",
+        "Printers & Scanners", "Routers & Modems", "External Storage (HDD/SSD)",
+        "Pendrives", "Power Banks", "Chargers & Adapters",
+        "Smart Speakers", "Projectors", "Other"
+    ],
+    "Home Appliances": [
+        "Refrigerators", "Washing Machines", "Air Conditioners",
+        "Air Coolers", "Televisions", "Microwave Ovens",
+        "Induction Cooktops", "Chimneys", "Water Purifiers",
+        "Geysers", "Vacuum Cleaners", "Fans", "Other"
+    ],
+    "Personal Gadgets": [
+        "Smart Watches", "Fitness Bands", "Earbuds",
+        "Headphones", "VR Headsets", "Gaming Consoles",
+        "Cameras", "Drones", "Other"
+    ],
+    "Furniture": [
+        "Beds", "Sofas", "Chairs", "Tables",
+        "Wardrobes", "TV Units", "Office Desks",
+        "Bookshelves", "Other"
+    ],
+    "Vehicles": [
+        "Cars", "Bikes", "Scooters", "Bicycles",
+        "Electric Vehicles", "Commercial Vehicles", "Other"
+    ],
+    "Property & Real Estate": [
+        "Flats/Apartments", "Independent Houses",
+        "Plots", "Commercial Property", "Other"
+    ],
+    "Financial Assets": [
+        "Bank Accounts", "Fixed Deposits", "Mutual Funds",
+        "Stocks", "Bonds", "Insurance Policies",
+        "Loans", "Credit Cards", "Other"
+    ],
+    "Documents": [
+        "Aadhaar Card", "PAN Card", "Passport",
+        "Driving License", "Vehicle RC", "Insurance Documents",
+        "Property Papers", "Birth Certificate", "Other"
+    ],
+    "Subscriptions & Services": [
+        "OTT Subscriptions", "Software Licenses",
+        "Cloud Storage", "Gym Membership",
+        "Internet/Broadband", "Mobile Plans", "Other"
+    ],
+    "Jewelry & Valuables": [
+        "Gold Jewelry", "Silver Items", "Diamonds",
+        "Watches", "Collectibles", "Other"
+    ],
+    "Education": [
+        "Certificates", "Degrees", "Online Courses",
+        "Books", "Other"
+    ],
+    "Other": [
+        "Miscellaneous", "Uncategorized", "Other"
+    ]
+}
+
+
+# One-click initialization endpoint for categories and subcategories
+@router.post("/initialize", status_code=status.HTTP_200_OK)
+async def initialize_categories_one_click(current_user: dict[str, str] = Depends(get_current_user), db=Depends(get_db)):
+    _ = current_user
+    now_iso = datetime.now(timezone.utc).isoformat()
+    categories_created = 0
+    subcategories_created = 0
+    for category_name, subcategory_names in CATEGORY_MAP.items():
+        canonical_category = str(category_name).strip()
+        if not canonical_category:
+            continue
+        # Check if category exists
+        existing_category = await db["categories"].find_one({"category": canonical_category})
+        if not existing_category:
+            cat_insert = await db["categories"].insert_one({
+                "name": canonical_category,
+                "category": canonical_category,
+                "description": "Initialized via API",
+                "is_active": True,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            })
+            category_id = str(cat_insert.inserted_id)
+            categories_created += 1
+        else:
+            category_id = str(existing_category["_id"])
+        # Insert subcategories if missing
+        for sub_name in subcategory_names:
+            canonical_sub = str(sub_name).strip()
+            if not canonical_sub:
+                continue
+            existing_sub = await db["subcategories"].find_one({
+                "name": canonical_sub,
+                "category_id": category_id
+            })
+            if not existing_sub:
+                await db["subcategories"].insert_one({
+                    "name": canonical_sub,
+                    "category_id": category_id,
+                    "description": "Initialized via API",
+                    "is_active": True,
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                })
+                subcategories_created += 1
+    return {
+        "message": "Initialization complete",
+        "categories_created": categories_created,
+        "subcategories_created": subcategories_created
+    }
 from datetime import datetime, timezone
 from typing import Any
 
@@ -7,7 +128,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import get_current_user
 from app.db.mongo import get_db
 
-router = APIRouter(prefix="/api/categories", tags=["Categories"])
+
 
 FINAL_CATEGORY_SUBCATEGORIES: dict[str, list[str]] = {
     "Electronics": [
@@ -246,40 +367,20 @@ async def initialize_categories(db) -> None:
 async def list_categories(current_user: dict[str, str] = Depends(get_current_user), db=Depends(get_db)) -> list[dict[str, Any]]:
     _ = current_user
     try:
-        rows = await db["categories"].find({"is_active": {"$ne": False}}).sort("category", 1).to_list(length=1000)
-        category_ids: list[str] = []
-        normalized_names: dict[str, str] = {}
-        for row in rows:
-            category_id = str(row.get("_id", "")).strip()
-            category_name = _clean_text(row.get("name")) or _clean_text(row.get("category"))
-            if not category_id or not category_name:
-                continue
-            category_ids.append(category_id)
-            normalized_names[category_id] = category_name
-
-        subcategories = await db["subcategories"].find(
-            {
-                "category_id": {"$in": category_ids},
-                "is_active": {"$ne": False},
-            }
-        ).to_list(length=5000)
-
-        subcategory_map: dict[str, list[str]] = {category_id: [] for category_id in category_ids}
-        for row in subcategories:
-            category_id = str(row.get("category_id", "")).strip()
-            name = _clean_text(row.get("name"))
-            if not category_id or not name:
-                continue
-            subcategory_map.setdefault(category_id, []).append(name)
-
-        return [
-            {
-                "category": normalized_names[category_id],
-                "sub_categories": sorted(subcategory_map.get(category_id, []), key=str.lower),
-                "subcategories": sorted(subcategory_map.get(category_id, []), key=str.lower),
-            }
-            for category_id in category_ids
-        ]
+        categories = await db["categories"].find({"is_active": True}).sort("category", 1).to_list(length=1000)
+        result = []
+        for category in categories:
+            cat_id = str(category["_id"])
+            subs = await db["subcategories"].find({"category_id": cat_id, "is_active": True}).to_list(length=500)
+            result.append({
+                "_id": cat_id,
+                "category": category.get("category") or category.get("name"),
+                "subcategories": [
+                    {"_id": str(sub["_id"]), "name": sub["name"]}
+                    for sub in subs
+                ]
+            })
+        return result
     except HTTPException:
         raise
     except Exception as error:  # pragma: no cover

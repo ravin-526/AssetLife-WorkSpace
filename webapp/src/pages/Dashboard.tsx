@@ -37,6 +37,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import { Link, useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, Legend, Tooltip as ChartTooltip, ResponsiveContainer } from "recharts";
+import useUserStore from "../store/userStore.ts";
 
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
 import { STATUS_OPTIONS } from "../constants/statusOptions.ts";
@@ -265,6 +266,19 @@ const Dashboard = () => {
     };
 
     void run();
+  }, []);
+
+  // Debug: Log access tokens in console for troubleshooting
+  useEffect(() => {
+    // Zustand store token
+    // @ts-ignore
+    const zustandToken = useUserStore.getState().token;
+    // localStorage tokens
+    const accessToken = localStorage.getItem("access_token");
+    const jwtToken = localStorage.getItem("jwt_token");
+    console.log("Access Token (Zustand):", zustandToken);
+    console.log("Access Token (localStorage):", accessToken);
+    console.log("JWT Token (fallback):", jwtToken);
   }, []);
 
   const summary = useMemo(() => {

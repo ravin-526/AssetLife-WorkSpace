@@ -65,6 +65,8 @@ import {
   updateAsset,
   uploadAssetDocuments,
 } from "../services/gmail.ts";
+import api from "../services/api.ts";
+
 // Status is now stored in DB, no need for frontend derivation
 
 const Assets = () => {
@@ -1278,11 +1280,11 @@ const Assets = () => {
   const editSubcategoryOptions = useMemo(() => {
     const matched = assetCategories.find((item) => item.category === editForm.category);
     const options = matched?.subcategories ?? [];
-    if (editForm.subcategory && !options.includes(editForm.subcategory)) {
-      return [editForm.subcategory, ...options];
-    }
-    return options;
-  }, [assetCategories, editForm.category, editForm.subcategory]);
+    // Normalize: always return array of objects { _id, name }
+    return options.map((sub) =>
+      typeof sub === "string" ? { _id: sub, name: sub } : sub
+    );
+  }, [assetCategories, editForm.category]);
 
   const paginatedAssets = sortedAssets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -1573,6 +1575,16 @@ const Assets = () => {
     setExportAnchorEl(null);
   };
 
+  // --- Category Initialization Button ---
+  const handleInitialize = async () => {
+    try {
+      await api.post("/api/categories/initialize");
+      alert("Categories initialized successfully");
+    } catch (err) {
+      alert("Initialization failed");
+    }
+  };
+
   return (
     <Box
       className="grid"
@@ -1610,6 +1622,15 @@ const Assets = () => {
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: { xs: "flex-start", md: "center" }, gap: 1.5, flexWrap: "wrap" }}>
           <Typography variant="h4">Assets</Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, ml: { md: "auto" } }}>
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              onClick={handleInitialize}
+              sx={{ mr: 1 }}
+            >
+              Initialize Categories
+            </Button>
             <Button
               size="small"
               variant="outlined"
@@ -2036,20 +2057,37 @@ const Assets = () => {
                                 <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
                                   <Tooltip title="View">
                                     <span>
-                                      <IconButton size="small" sx={{ p: 0.5 }} onClick={() => { void handleOpenAssetDetails(asset.id); }}>
+                                      <IconButton
+                                        size="small"
+                                        sx={{ p: 0.5 }}
+                                        onClick={() => { void handleOpenAssetDetails(asset.id); }}
+                                      >
                                         <VisibilityOutlinedIcon sx={{ fontSize: 15 }} />
                                       </IconButton>
                                     </span>
                                   </Tooltip>
                                   <Tooltip title="Edit">
-                                    <IconButton size="small" sx={{ p: 0.5 }} onClick={() => { void handleOpenEdit(asset); }}>
-                                      <EditOutlinedIcon sx={{ fontSize: 15 }} />
-                                    </IconButton>
+                                    <span>
+                                      <IconButton
+                                        size="small"
+                                        sx={{ p: 0.5 }}
+                                        onClick={() => { void handleOpenEdit(asset); }}
+                                      >
+                                        <EditOutlinedIcon sx={{ fontSize: 15 }} />
+                                      </IconButton>
+                                    </span>
                                   </Tooltip>
                                   <Tooltip title="Delete">
-                                    <IconButton size="small" color="error" sx={{ p: 0.5 }} onClick={() => handleOpenDelete(asset)}>
-                                      <DeleteOutlineIcon sx={{ fontSize: 15 }} />
-                                    </IconButton>
+                                    <span>
+                                      <IconButton
+                                        size="small"
+                                        color="error"
+                                        sx={{ p: 0.5 }}
+                                        onClick={() => handleOpenDelete(asset)}
+                                      >
+                                        <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                                      </IconButton>
+                                    </span>
                                   </Tooltip>
                                 </Stack>
                               </Box>
@@ -2227,8 +2265,8 @@ const Assets = () => {
               fullWidth
               disabled={!editForm.category}
             >
-              {editSubcategoryOptions.map((option) => (
-                <MenuItem key={option} value={option}>{option}</MenuItem>
+              {editSubcategoryOptions.map((sub) => (
+                <MenuItem key={sub._id} value={sub._id}>{sub.name}</MenuItem>
               ))}
             </TextField>
             {editForm.subcategory === "Other" ? (

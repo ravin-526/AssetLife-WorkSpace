@@ -672,7 +672,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-end",
-            zIndex: muiTheme.zIndex.modal - 1,
+            zIndex: 100,
             opacity: isScrolling ? 0.1 : 0.85,
             transition: "opacity 0.25s ease",
           }}
@@ -691,6 +691,7 @@ const AdminLayout = ({ mode, onToggleTheme }: AdminLayoutProps) => {
               position: "absolute",
               right: mainFabSize + fabGap,
               bottom: 0,
+              zIndex: 9999,
               visibility: isReminderShortcutVisible ? "visible" : "hidden",
               pointerEvents: isReminderShortcutVisible ? "auto" : "none",
               opacity: isReminderShortcutVisible ? 1 : 0,

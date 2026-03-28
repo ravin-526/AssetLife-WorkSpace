@@ -158,6 +158,21 @@ const AssetPreviewModal = ({
     custom_subcategory: "",
     status: "Active",
   });
+
+  // Defensive: ensure subcategory is always a string
+  type FormType = typeof form;
+  const setFormSafe = (updater: ((prev: FormType) => FormType) | FormType) => {
+    setForm((prev) => {
+      const next = typeof updater === "function" ? (updater as (prev: FormType) => FormType)(prev) : updater;
+      let subcategory = next.subcategory;
+      if (subcategory && typeof subcategory === "object") {
+        // Try to extract _id or name, else fallback to empty string
+        const subcatObj = subcategory as { _id?: string; name?: string };
+        subcategory = subcatObj._id || subcatObj.name || "";
+      }
+      return { ...next, subcategory };
+    });
+  };
   const [warrantyEnabled, setWarrantyEnabled] = useState(false);
   const [warrantyDetails, setWarrantyDetails] = useState({
     provider: "",
@@ -197,6 +212,30 @@ const AssetPreviewModal = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [basicDetailsError, setBasicDetailsError] = useState("");
   const [categories, setCategories] = useState<AssetCategoryOption[]>([]);
+
+  // Normalized category/subcategory options for dropdowns
+
+  // Use category string as _id and name for dropdown
+  const normalizedCategoryOptions = useMemo(() => {
+    return categories.map((item) => ({
+      _id: item.category,
+      name: item.category,
+    }));
+  }, [categories]);
+
+  // Subcategories are always string[]
+  const normalizedSubcategoryOptions = useMemo(() => {
+    const selected = categories.find((item) => item.category === form.category);
+    const options = (selected?.subcategories || []).map((sub) => ({ _id: sub, name: sub }));
+    // If current value is not in options, add it for edit mode
+    if (
+      form.subcategory &&
+      !options.some((opt) => opt._id === form.subcategory)
+    ) {
+      options.unshift({ _id: form.subcategory, name: form.subcategory });
+    }
+    return options;
+  }, [categories, form.category, form.subcategory]);
   const [initialSnapshot, setInitialSnapshot] = useState("");
 
   useAutoDismissMessage(attachmentError, setAttachmentError, { delay: 5000 });
@@ -1203,22 +1242,7 @@ const AssetPreviewModal = ({
     return next.toLocaleDateString();
   }, [form.purchase_date, serviceEnabled, serviceIntervalDays]);
 
-  const subcategoryOptions = useMemo(() => {
-    const selected = categories.find((item) => item.category === form.category);
-    const options = selected?.subcategories ?? [];
-    if (form.subcategory && !options.includes(form.subcategory)) {
-      return [form.subcategory, ...options];
-    }
-    return options;
-  }, [categories, form.category, form.subcategory]);
 
-  const categoryOptions = useMemo(() => {
-    const options = categories.map((item) => item.category);
-    if (form.category && !options.includes(form.category)) {
-      return [form.category, ...options];
-    }
-    return options;
-  }, [categories, form.category]);
 
 
 
@@ -1302,10 +1326,7 @@ const AssetPreviewModal = ({
               minHeight: 0,
             }}
           >
-            <Paper variant="outlined" sx={{ minHeight: 0, display: "flex", flexDirection: "column", p: 2 }}>
-              <Typography variant="subtitle1">Asset Information</Typography>
-              <Divider sx={{ mt: 1.25, mb: 1.5 }} />
-
+            <>
               <Box sx={{ minHeight: 0, flex: 1, overflowY: "auto", pr: 0.5 }}>
                 <Stack spacing={2}>
                   {suggestion?.attachment_filename ? (
@@ -1353,8 +1374,8 @@ const AssetPreviewModal = ({
                             sx={standardFieldSx}
                             fullWidth
                           >
-                            {categoryOptions.map((item) => (
-                              <MenuItem key={item} value={item}>{item}</MenuItem>
+                            {normalizedCategoryOptions.map((item) => (
+                              <MenuItem key={item._id} value={item._id}>{item.name}</MenuItem>
                             ))}
                           </TextField>
                         </Grid>
@@ -1378,11 +1399,13 @@ const AssetPreviewModal = ({
                             size="small"
                             select
                             label="SubCategory *"
-                            value={form.subcategory}
+                            value={typeof form.subcategory === "object"
+                              ? ((form.subcategory as { _id?: string; name?: string })._id || (form.subcategory as { name?: string }).name || "")
+                              : form.subcategory}
                             onChange={(event) => {
                               setBasicDetailsError("");
                               const selectedSubcategory = event.target.value;
-                              setForm((prev) => ({
+                              setFormSafe((prev: FormType) => ({
                                 ...prev,
                                 subcategory: selectedSubcategory,
                                 custom_subcategory: selectedSubcategory.toLowerCase() === "other" ? prev.custom_subcategory : "",
@@ -1392,8 +1415,8 @@ const AssetPreviewModal = ({
                             fullWidth
                             disabled={!form.category}
                           >
-                            {subcategoryOptions.map((item) => (
-                              <MenuItem key={item} value={item}>{item}</MenuItem>
+                            {normalizedSubcategoryOptions.map((item) => (
+                              <MenuItem key={item._id} value={item._id}>{item.name}</MenuItem>
                             ))}
                           </TextField>
                         </Grid>
@@ -1851,7 +1874,7 @@ const AssetPreviewModal = ({
                   </Accordion>
                 </Stack>
               </Box>
-            </Paper>
+            </>
 
             {!collapseDocumentViewer ? (
             <Paper variant="outlined" sx={{ minHeight: 0, display: "flex", flexDirection: "column", p: 2 }}>

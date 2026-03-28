@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Alert, Box, CircularProgress, Divider, Paper, Typography } from "@mui/material";
+import { Alert, Box, Button, CircularProgress, Divider, Paper, Typography } from "@mui/material";
 import { useParams } from "react-router-dom";
+import api from "../services/api.ts";
 
 import { Asset, getAssetById } from "../services/gmail.ts";
 import useAutoDismissMessage from "../hooks/useAutoDismissMessage.ts";
@@ -10,6 +11,11 @@ const AssetView = () => {
   const [asset, setAsset] = useState<Asset | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // --- Category Initialization Button State ---
+  const [initLoading, setInitLoading] = useState(false);
+  const [initDone, setInitDone] = useState(false);
+  const [initResult, setInitResult] = useState<{categories_created: number, subcategories_created: number} | null>(null);
 
   useAutoDismissMessage(error, setError, { delay: 5000 });
 
@@ -35,6 +41,21 @@ const AssetView = () => {
 
     void run();
   }, [assetId]);
+
+  const handleInitialize = async () => {
+    setInitLoading(true);
+    try {
+      const res = await api.post("/api/categories/initialize");
+      setInitResult(res.data);
+      setInitDone(true);
+      alert("Categories initialized successfully");
+    } catch (err) {
+      console.error(err);
+      alert("Initialization failed");
+    } finally {
+      setInitLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -90,6 +111,23 @@ const AssetView = () => {
             </>
           ) : null}
         </Paper>
+      </Box>
+      <Box className="col-12">
+        <Divider sx={{ my: 2 }} />
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleInitialize}
+          disabled={initLoading || initDone}
+          sx={{ mb: 2 }}
+        >
+          {initLoading ? "Initializing..." : initDone ? "Initialized" : "Initialize Categories"}
+        </Button>
+        {initResult && (
+          <Alert severity="success" sx={{ mt: 1 }}>
+            Categories created: {initResult.categories_created}, Subcategories created: {initResult.subcategories_created}
+          </Alert>
+        )}
       </Box>
     </Box>
   );
