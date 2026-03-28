@@ -55,6 +55,16 @@ import {
   uploadAssetDocuments,
 } from "../services/gmail.ts";
 
+// --- Category/Subcategory State ---
+type CategoryType = { id: string; name: string; subcategories: string[] };
+const normalizeCategories = (categories: any[]): CategoryType[] =>
+  (categories || []).map((item: any) => ({
+    id: item.category,
+    name: item.category,
+    subcategories: item.subcategories || [], // keep as array of strings
+  }));
+
+
 type AddAssetMethod = "email_sync" | "invoice_upload" | "excel_upload" | "barcode_qr" | "manual_entry";
 type ActivityStepState = "completed" | "in_progress" | "pending";
 
@@ -186,6 +196,91 @@ const EXCEL_ALL_COLUMNS_WITH_WIDTH: Array<{ key: string; label: string; width: s
 ];
 
 const AddAsset = () => {
+  // Category/subcategory state
+  const [categories, setCategories] = useState<CategoryType[]>([]);
+  const [subcategories, setSubcategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedSubcategory, setSelectedSubcategory] = useState("");
+    // Fetch categories on mount
+    useEffect(() => {
+      let active = true;
+      const fetchCategories = async () => {
+        try {
+          const raw = await getAssetCategories();
+          if (active) {
+            const normalized = normalizeCategories(raw);
+            setCategories(normalized);
+          }
+        } catch {
+          if (active) setCategories([]);
+        }
+      };
+      fetchCategories();
+      return () => { active = false; };
+    }, []);
+
+    // Update subcategories when category changes
+    useEffect(() => {
+      const cat = categories.find((c) => c.id === selectedCategory);
+      setSubcategories(cat ? cat.subcategories : []);
+      setSelectedSubcategory("");
+    }, [selectedCategory, categories]);
+
+    // Handler for category dropdown
+    const handleCategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setSelectedCategory(value);
+      // subcategories will update via useEffect
+    };
+
+    // Handler for subcategory dropdown
+    const handleSubcategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setSelectedSubcategory(e.target.value);
+    };
+
+    // Subcategory dropdown rendering helper
+    const renderSubcategoryDropdown = () => (
+      <TextField
+        select
+        size="small"
+        label="Subcategory"
+        value={selectedSubcategory}
+        onChange={handleSubcategoryChange}
+        sx={standardFieldSx}
+        fullWidth
+        disabled={!selectedCategory || subcategories.length === 0}
+      >
+        {subcategories.map((sub) => (
+          <MenuItem key={sub} value={sub}>
+            {sub}
+          </MenuItem>
+        ))}
+      </TextField>
+    );
+
+    // Status dropdown rendering helper
+    const renderStatusDropdown = () => (
+      <TextField
+        select
+        size="small"
+        label="Status"
+        value={status}
+        onChange={(e) => setStatus(e.target.value)}
+        sx={standardFieldSx}
+        fullWidth
+      >
+        {ALLOWED_STATUS_OPTIONS.map((option) => (
+          <MenuItem key={option} value={option}>
+            {option}
+          </MenuItem>
+        ))}
+      </TextField>
+    );
+    // In form submit, use selectedCategory and selectedSubcategory
+    // In edit/initial load, after setting category, set selectedCategory and trigger subcategory update
+    // In excel upload preview, use categories/subcategories from normalized state
+    // Edge: if category is cleared, subcategories and selectedSubcategory are reset
+    // Edge: if API fails, categories/subcategories remain as previous or empty
   const navigate = useNavigate();
   const location = useLocation();
   const [suggestions, setSuggestions] = useState<AssetSuggestion[]>([]);
@@ -262,6 +357,32 @@ const AddAsset = () => {
     return "manual";
   };
 
+  // Allowed status options for dropdown
+  const ALLOWED_STATUS_OPTIONS = ["Active", "Inactive", "Lost", "Damaged"];
+  const DEFAULT_STATUS = "Active";
+
+  // Status dropdown state
+  const [status, setStatus] = useState(DEFAULT_STATUS);
+
+  // When loading existing asset (edit mode), map backend value to dropdown value
+  useEffect(() => {
+    if (selectedSuggestion && selectedSuggestion.status && ALLOWED_STATUS_OPTIONS.includes(selectedSuggestion.status)) {
+      setStatus(selectedSuggestion.status);
+    }
+  }, [selectedSuggestion]);
+
+  // Console validation for dropdown value/options
+  useEffect(() => {
+    // Subcategory
+    if (subcategories && subcategories.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log("Subcategory dropdown value:", selectedSubcategory, "options:", subcategories);
+    }
+    // Status
+    // eslint-disable-next-line no-console
+    console.log("Status dropdown value:", status, "options:", ALLOWED_STATUS_OPTIONS);
+  }, [selectedSubcategory, subcategories, status]);
+
   const buildManualSuggestion = (method: AddAssetMethod = "manual_entry"): AssetSuggestion => {
     const now = new Date().toISOString();
     const seed = `manual-${Date.now()}`;
@@ -270,7 +391,7 @@ const AddAsset = () => {
       product_name: "",
       quantity: 1,
       source: getCreationSourceForMethod(method),
-      status: "new",
+      status: DEFAULT_STATUS,
       email_message_id: seed,
       already_added: false,
       created_at: now,

@@ -164,13 +164,8 @@ const AssetPreviewModal = ({
   const setFormSafe = (updater: ((prev: FormType) => FormType) | FormType) => {
     setForm((prev) => {
       const next = typeof updater === "function" ? (updater as (prev: FormType) => FormType)(prev) : updater;
-      let subcategory = next.subcategory;
-      if (subcategory && typeof subcategory === "object") {
-        // Try to extract _id or name, else fallback to empty string
-        const subcatObj = subcategory as { _id?: string; name?: string };
-        subcategory = subcatObj._id || subcatObj.name || "";
-      }
-      return { ...next, subcategory };
+      // subcategory is always a string
+      return { ...next, subcategory: next.subcategory || "" };
     });
   };
   const [warrantyEnabled, setWarrantyEnabled] = useState(false);
@@ -211,31 +206,65 @@ const AssetPreviewModal = ({
   const [supportingDocuments, setSupportingDocuments] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [basicDetailsError, setBasicDetailsError] = useState("");
-  const [categories, setCategories] = useState<AssetCategoryOption[]>([]);
+  // --- Category/Subcategory State ---
+  type CategoryOption = { _id?: string; id?: string; category: string; subcategories?: (string | { _id?: string; id?: string; name?: string })[] };
+  type SubcategoryOption = { id: string; name: string };
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [subcategories, setSubcategories] = useState<SubcategoryOption[]>([]);
 
-  // Normalized category/subcategory options for dropdowns
+  // Normalize categories for dropdown
+  const normalizedCategoryOptions = useMemo(() =>
+    (categories || []).map((item) => ({ id: item._id || item.id || item.category, name: item.category })),
+    [categories]
+  );
 
-  // Use category string as _id and name for dropdown
-  const normalizedCategoryOptions = useMemo(() => {
-    return categories.map((item) => ({
-      _id: item.category,
-      name: item.category,
-    }));
-  }, [categories]);
-
-  // Subcategories are always string[]
-  const normalizedSubcategoryOptions = useMemo(() => {
-    const selected = categories.find((item) => item.category === form.category);
-    const options = (selected?.subcategories || []).map((sub) => ({ _id: sub, name: sub }));
-    // If current value is not in options, add it for edit mode
-    if (
-      form.subcategory &&
-      !options.some((opt) => opt._id === form.subcategory)
-    ) {
-      options.unshift({ _id: form.subcategory, name: form.subcategory });
+  // Update subcategories when category changes
+  useEffect(() => {
+    const cat = categories.find((c) => (c._id || c.id || c.category) === form.category);
+    // Always normalize subcategories to array of {id, name}
+    let normalized: SubcategoryOption[] = [];
+    if (cat && Array.isArray(cat.subcategories)) {
+      normalized = cat.subcategories.map((sub) =>
+        typeof sub === "string"
+          ? { id: sub, name: sub }
+          : { id: (sub._id || sub.id || sub.name) as string, name: (sub.name || sub._id || sub.id) as string }
+      );
     }
-    return options;
-  }, [categories, form.category, form.subcategory]);
+    setSubcategories(normalized);
+    // Optionally reset subcategory if not present
+    if (form.subcategory && (!cat || !normalized.some((s) => s.id === form.subcategory))) {
+      setFormSafe((prev) => ({ ...prev, subcategory: "" }));
+    }
+  }, [form.category, categories]);
+  // For dropdown rendering
+  const normalizedSubcategoryOptions = subcategories;
+
+  // Handler for category dropdown
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormSafe((prev) => ({ ...prev, category: value, subcategory: "" }));
+    // subcategories will update via useEffect
+  };
+
+  // Handler for subcategory dropdown
+  const handleSubcategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormSafe((prev) => ({ ...prev, subcategory: e.target.value }));
+  };
+
+  // Fetch categories on mount
+  useEffect(() => {
+    let active = true;
+    const fetchCategories = async () => {
+      try {
+        const raw = await getAssetCategories();
+        if (active) setCategories(raw);
+      } catch {
+        if (active) setCategories([]);
+      }
+    };
+    fetchCategories();
+    return () => { active = false; };
+  }, []);
   const [initialSnapshot, setInitialSnapshot] = useState("");
 
   useAutoDismissMessage(attachmentError, setAttachmentError, { delay: 5000 });
@@ -518,6 +547,14 @@ const AssetPreviewModal = ({
     }
     const record = (suggestion as unknown as Record<string, unknown>) || {};
 
+    // Normalize subcategory to string
+    let rawSubcategory = getRecordValue(record, ["subcategory", "sub_category", "asset_subcategory"]);
+    let normalizedSubcategory = "";
+    if (typeof rawSubcategory === "string") {
+      normalizedSubcategory = rawSubcategory;
+    } else if (rawSubcategory && typeof rawSubcategory === "object") {
+      normalizedSubcategory = rawSubcategory._id || rawSubcategory.id || rawSubcategory.name || "";
+    }
     const initialForm = {
       product_name: suggestion?.product_name ?? "",
       brand: suggestion?.brand ?? "",
@@ -525,7 +562,7 @@ const AssetPreviewModal = ({
       price: suggestion?.price !== undefined && suggestion?.price !== null ? String(suggestion.price) : "",
       purchase_date: suggestion?.purchase_date ? suggestion.purchase_date.slice(0, 10) : "",
       category: getRecordValue(record, ["category", "asset_category"]) ?? "",
-      subcategory: getRecordValue(record, ["subcategory", "sub_category", "asset_subcategory"]) ?? "",
+      subcategory: normalizedSubcategory,
       serial_number: getRecordValue(record, ["serial_number", "serialNo"]) ?? "",
       model_number: getRecordValue(record, ["model_number", "modelNo"]) ?? "",
       invoice_number: getRecordValue(record, ["invoice_number", "invoice_no"]) ?? "",
@@ -543,6 +580,9 @@ const AssetPreviewModal = ({
       })(),
     };
     setForm(initialForm);
+    // Debug log for subcategory type
+    // eslint-disable-next-line no-console
+    console.log("[AssetPreviewModal] subcategory type after init:", typeof initialForm.subcategory, initialForm.subcategory);
 
     const warranty = getObjectRecordValue(record, ["warranty_details", "warranty"]);
     const warrantyReminders = warranty ? getObjectRecordValue(warranty, ["reminders"]) : undefined;
@@ -1375,7 +1415,7 @@ const AssetPreviewModal = ({
                             fullWidth
                           >
                             {normalizedCategoryOptions.map((item) => (
-                              <MenuItem key={item._id} value={item._id}>{item.name}</MenuItem>
+                              <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
                             ))}
                           </TextField>
                         </Grid>
@@ -1399,9 +1439,7 @@ const AssetPreviewModal = ({
                             size="small"
                             select
                             label="SubCategory *"
-                            value={typeof form.subcategory === "object"
-                              ? ((form.subcategory as { _id?: string; name?: string })._id || (form.subcategory as { name?: string }).name || "")
-                              : form.subcategory}
+                            value={form.subcategory || ""}
                             onChange={(event) => {
                               setBasicDetailsError("");
                               const selectedSubcategory = event.target.value;
@@ -1416,7 +1454,7 @@ const AssetPreviewModal = ({
                             disabled={!form.category}
                           >
                             {normalizedSubcategoryOptions.map((item) => (
-                              <MenuItem key={item._id} value={item._id}>{item.name}</MenuItem>
+                              <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
                             ))}
                           </TextField>
                         </Grid>

@@ -132,7 +132,9 @@ const Assets = () => {
     customCategory: "",
     customSubcategory: "",
   });
-  const [assetCategories, setAssetCategories] = useState<{ category: string; subcategories: string[] }[]>([]);
+  // --- Category/Subcategory State ---
+  const [assetCategories, setAssetCategories] = useState<{ id: string; name: string; subcategories: string[] }[]>([]);
+  const [editSubcategories, setEditSubcategories] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingAsset, setDeletingAsset] = useState<Asset | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -182,8 +184,17 @@ const Assets = () => {
   };
 
   const loadAssetCategories = async () => {
-    const response = await getAssetCategories();
-    setAssetCategories(response);
+    try {
+      const raw = await getAssetCategories();
+      const normalized = (raw || []).map((item) => ({
+        id: item.category,
+        name: item.category,
+        subcategories: item.subcategories || [],
+      }));
+      setAssetCategories(normalized);
+    } catch {
+      setAssetCategories([]);
+    }
   };
 
   useEffect(() => {
@@ -1270,21 +1281,34 @@ const Assets = () => {
   }, [filteredAssets, sourceSortDirection]);
 
   const editCategoryOptions = useMemo(() => {
-    const options = assetCategories.map((item) => item.category);
+    const options = assetCategories.map((item) => item.name);
     if (editForm.category && !options.includes(editForm.category)) {
       return [editForm.category, ...options];
     }
     return options;
   }, [assetCategories, editForm.category]);
 
-  const editSubcategoryOptions = useMemo(() => {
-    const matched = assetCategories.find((item) => item.category === editForm.category);
-    const options = matched?.subcategories ?? [];
-    // Normalize: always return array of objects { _id, name }
-    return options.map((sub) =>
-      typeof sub === "string" ? { _id: sub, name: sub } : sub
-    );
-  }, [assetCategories, editForm.category]);
+  // Update subcategories when edit category changes
+  useEffect(() => {
+    const cat = assetCategories.find((c) => c.id === editForm.category);
+    setEditSubcategories(cat ? cat.subcategories : []);
+    // Optionally reset subcategory if not present
+    if (editForm.subcategory && (!cat || !cat.subcategories.includes(editForm.subcategory))) {
+      setEditForm((prev) => ({ ...prev, subcategory: "" }));
+    }
+  }, [editForm.category, assetCategories]);
+
+  // Handler for edit category dropdown
+  const handleEditCategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEditForm((prev) => ({ ...prev, category: value, subcategory: "" }));
+    // subcategories will update via useEffect
+  };
+
+  // Handler for edit subcategory dropdown
+  const handleEditSubcategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditForm((prev) => ({ ...prev, subcategory: e.target.value }));
+  };
 
   const paginatedAssets = sortedAssets.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -2265,8 +2289,8 @@ const Assets = () => {
               fullWidth
               disabled={!editForm.category}
             >
-              {editSubcategoryOptions.map((sub) => (
-                <MenuItem key={sub._id} value={sub._id}>{sub.name}</MenuItem>
+              {editSubcategories.map((sub) => (
+                <MenuItem key={sub} value={sub}>{sub}</MenuItem>
               ))}
             </TextField>
             {editForm.subcategory === "Other" ? (
